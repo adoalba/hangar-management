@@ -1,0 +1,7 @@
+{
+  "name": "World Class Aviation - Hangar Management",
+  "description": "Bilingual (ES/EN) aviation logistics system for managing Serviceable, Repairable, Removed No Defect, and Rejected materials with integrated PDF/Excel reporting and digital signatures.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+    "method": "SMTP",
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "smtp_user": "ameriair.co@gmail.com",
+    "smtp_pass": "mloxswpbwtldyypl",
+    "resend_key": "",
+    "resend_from": "operaciones@aerologistics.com"
+}

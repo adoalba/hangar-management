@@ -1,0 +1,35 @@
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: aerologistics-db
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: aerologistics
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - aero-net
+
+  hangar-terminal:
+    build: .
+    container_name: aerologistics-app
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/aerologistics
+      - API_KEY=${API_KEY}
+    depends_on:
+      - db
+    networks:
+      - aero-net
+    restart: unless-stopped
+
+networks:
+  aero-net:
+    driver: bridge
+
+volumes:
+  pgdata:

@@ -1,0 +1,43 @@
+
+import os
+import uuid
+from werkzeug.security import generate_password_hash
+from models import SessionLocal, User, Base
+
+def create_initial_admin():
+    db = SessionLocal()
+    
+    # Verificar si ya existe el admin
+    if db.query(User).filter(User.username == "admin").first():
+        print("[-] El usuario administrador ya existe en el sistema.")
+        db.close()
+        return
+
+    # Usar el mismo método de hashing que server.py
+    hashed_pw = generate_password_hash("Admin123!@#")
+    
+    new_admin = User(
+        id=str(uuid.uuid4()),
+        name="System Administrator",
+        username="admin",
+        email="admin@worldclassaviation.com",
+        password=hashed_pw,
+        role="ADMIN",
+        active=True,
+        suspended=False,
+        must_change_password=True
+    )
+    
+    db.add(new_admin)
+    try:
+        db.commit()
+        print("✅ Protocolo de seguridad completado.")
+        print("Acceso inicial: admin / Admin123!@#")
+    except Exception as e:
+        print(f"❌ Fallo en la creación de identidad: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+if __name__ == "__main__":
+    create_initial_admin()
