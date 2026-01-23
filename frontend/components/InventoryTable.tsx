@@ -4,6 +4,8 @@ import { AviationPart, TagColor, User, UserRole } from '../types';
 import { ICONS } from '../constants';
 import PartDetailModal from './PartDetailModal';
 import PrintTemplate from './PrintTemplate';
+import TraceabilityModal from './TraceabilityModal';
+import EmailModal from './EmailModal';
 
 interface InventoryTableProps {
   inventory: AviationPart[];
@@ -22,6 +24,8 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
   const [filterLoc, setFilterLoc] = useState('ALL');
   const [showExportToolbox, setShowExportToolbox] = useState(false);
   const [selectedPartView, setSelectedPartView] = useState<AviationPart | null>(null);
+  const [tracingPart, setTracingPart] = useState<AviationPart | null>(null);
+  const [emailingPart, setEmailingPart] = useState<AviationPart | null>(null);
 
   const locations = useMemo(() => {
     if (!Array.isArray(inventory)) return [];
@@ -243,6 +247,8 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
                       <button onClick={() => handlePrint(item)} className="p-3 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all border border-slate-800 shadow-sm" title={t.save_print}><ICONS.Printer size={18} /></button>
                       {user.role !== UserRole.VIEWER && (
                         <>
+                          <button onClick={() => setTracingPart(item)} className="p-3 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all border border-slate-800 shadow-sm" title={t.traceability || "Traceability"}><ICONS.Activity size={18} /></button>
+                          <button onClick={() => setEmailingPart(item)} className="p-3 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all border border-slate-800 shadow-sm" title={t.send_email || "Email"}><ICONS.Mail size={18} /></button>
                           <button onClick={() => onEdit(item)} className="p-3 text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all border border-slate-800 shadow-sm" title={t.edit_user}><ICONS.Edit size={18} /></button>
                           <button onClick={() => handleDelete(item)} className="p-3 text-slate-600 hover:text-rose-500 transition-all" title={t.delete_user}><ICONS.Trash size={18} /></button>
                         </>
@@ -268,6 +274,8 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
       </div>
 
       {selectedPartView && <PartDetailModal part={selectedPartView} onClose={() => setSelectedPartView(null)} t={t} />}
+      {tracingPart && <TraceabilityModal history={tracingPart.history || []} partName={tracingPart.partName} pn={tracingPart.pn} sn={tracingPart.sn} tagColor={tracingPart.tagColor} onClose={() => setTracingPart(null)} onEmail={() => { setTracingPart(null); setEmailingPart(tracingPart); }} t={t} />}
+      {emailingPart && <EmailModal part={emailingPart} onClose={() => setEmailingPart(null)} token={token} addToast={addToast} t={t} />}
     </div>
   );
 };

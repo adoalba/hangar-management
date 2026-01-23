@@ -1,9 +1,0 @@
-node_modules
-dist
-__pycache__
-*.pyc
-.git
-.env
-.vscode
-npm-debug.log
-README.md

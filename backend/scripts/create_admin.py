@@ -1,8 +1,11 @@
 
 import os
+import sys
 import uuid
 from werkzeug.security import generate_password_hash
-from models import SessionLocal, User, Base
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.models import SessionLocal, User, Base
 
 def create_initial_admin():
     db = SessionLocal()

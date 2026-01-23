@@ -1,28 +1,47 @@
+version: "3.9"
 
 services:
   db:
-    image: postgres:15-alpine
-    container_name: aerologistics-db
+    image: docker.io/postgres:15-alpine
+    container_name: hangar_db
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: aerologistics
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-hangar}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - aero-net
 
-  hangar-terminal:
-    build: .
-    container_name: aerologistics-app
-    ports:
-      - "8080:8080"
+  api:
+    build:
+      context: ./backend
+    container_name: hangar_api
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/aerologistics
       - API_KEY=${API_KEY}
     depends_on:
       - db
+    expose:
+      - "5000"
+    volumes:
+      - app_logs:/app/logs
+      - app_backups:/app/backups
+    networks:
+      - aero-net
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: hangar_nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
     networks:
       - aero-net
     restart: unless-stopped
@@ -33,3 +52,5 @@ networks:
 
 volumes:
   pgdata:
+  app_logs:
+  app_backups:

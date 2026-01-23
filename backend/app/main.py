@@ -1,10 +1,11 @@
 
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, g
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_compress import Compress
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import SQLAlchemyError
 import os
 import logging
 import uuid
@@ -17,12 +18,38 @@ from sqlalchemy import func, text
 from google.generativeai import GenerativeModel, configure
 import re
 
-from models import SessionLocal, User, UserSession, AviationPart
-import server_email # Módulo de envío de correo
+from .models import SessionLocal, User, UserSession, AviationPart
+from . import server_email # Módulo de envío de correo
 
-# --- CONFIGURACIÓN ESTRUCTURAL ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+
+# --- CONFIGURACIÓN DE LOGGING ---
+LOG_DIR = "/app/logs"
+if not os.path.exists(LOG_DIR) and os.access("/app", os.W_OK):
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+log_format = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Consola
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_format)
+logger.addHandler(console_handler)
+
+# Archivo con rotación (si es posible escribir)
+try:
+    file_handler = RotatingFileHandler(
+        os.path.join(LOG_DIR, "app.log"), 
+        maxBytes=10*1024*1024, # 10MB
+        backupCount=5
+    )
+    file_handler.setFormatter(log_format)
+    logger.addHandler(file_handler)
+except Exception:
+    logger.warning("No se pudo inicializar el log en archivo, solo consola disponible.")
 
 try:
     configure(api_key=os.environ.get("API_KEY"))
@@ -33,7 +60,7 @@ except Exception as e:
     logger.error(f"❌ Error al configurar Gemini AI SDK: {e}")
 
 # --- APP SETUP ---
-app = Flask(__name__, static_folder='static', static_url_path='')
+app = Flask(__name__)
 CORS(app)
 Compress(app)
 
@@ -43,6 +70,32 @@ limiter = Limiter(
     default_limits=["2000 per day", "500 per hour"],
     storage_uri="memory://"
 )
+
+# --- DATABASE SESSION MANAGEMENT ---
+def get_db():
+    if 'db' not in g:
+        g.db = SessionLocal()
+    return g.db
+
+@app.teardown_appcontext
+def teardown_db(exception):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+# --- ERROR HANDLERS ---
+@app.errorhandler(SQLAlchemyError)
+def handle_db_error(e):
+    logger.error(f"Database error: {str(e)}")
+    return jsonify({"message": "Error interno de base de datos"}), 500
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"message": "Recurso no encontrado"}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"message": "Error interno del servidor"}), 500
 
 # --- MIDDLEWARE DE SEGURIDAD Y HELPERS ---
 
@@ -64,16 +117,16 @@ def token_required(f):
             return jsonify({"message": "Token de seguridad no proporcionado"}), 401
         
         token = auth_header.split(' ')[1]
-        db = SessionLocal()
+        db = get_db()
         session_record = db.query(UserSession).filter(UserSession.token == token).first()
         
         if not session_record or session_record.expiry < datetime.utcnow():
-            if session_record: db.delete(session_record); db.commit()
-            db.close()
+            if session_record: 
+                db.delete(session_record)
+                db.commit()
             return jsonify({"message": "Sesión inválida o expirada"}), 401
         
         request.user_id = session_record.user_id
-        db.close()
         return f(*args, **kwargs)
     return decorated
 
@@ -89,7 +142,15 @@ def generate_secure_password(length=14):
     return password
 
 def user_to_dict(user):
-    return {"id": user.id, "name": user.name, "username": user.username, "email": user.email, "role": user.role, "active": user.active, "suspended": user.suspended}
+    return {
+        "id": user.id, 
+        "name": user.name, 
+        "username": user.username, 
+        "email": user.email, 
+        "role": user.role, 
+        "active": user.active, 
+        "suspended": user.suspended
+    }
 
 # --- ENDPOINTS DE USUARIO Y SESIÓN ---
 
@@ -100,12 +161,12 @@ def login_check():
     username = data.get('username', '').lower().strip()
     password = data.get('password', '')
     
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(func.lower(User.username) == username).first()
     
     if user and check_password_hash(user.password, password):
         if user.suspended or not user.active:
-            db.close(); return jsonify({"message": "Cuenta restringida."}), 403
+            return jsonify({"message": "Cuenta restringida."}), 403
             
         token = str(uuid.uuid4())
         db.query(UserSession).filter(UserSession.user_id == user.id).delete()
@@ -114,10 +175,8 @@ def login_check():
         db.commit()
         
         user_data = {"id": user.id, "name": user.name, "role": user.role, "mustChangePassword": user.must_change_password}
-        db.close()
         return jsonify({"status": "success", "token": token, "user": user_data})
     
-    db.close()
     return jsonify({"message": "Credenciales de acceso incorrectas"}), 401
 
 @app.route('/api/update-password', methods=['POST'])
@@ -126,16 +185,14 @@ def update_password():
     data = request.json
     new_password = data.get('password')
     
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(User.id == request.user_id).first()
     if user:
         user.password = generate_password_hash(new_password)
         user.must_change_password = False
         db.commit()
-        db.close()
         return jsonify({"message": "Contraseña actualizada."})
     
-    db.close()
     return jsonify({"message": "Usuario no encontrado"}), 404
 
 # --- ENDPOINTS DE INVENTARIO ---
@@ -143,26 +200,26 @@ def update_password():
 @app.route('/api/inventory', methods=['GET'])
 @token_required
 def get_inventory():
-    db = SessionLocal()
+    db = get_db()
     parts = db.query(AviationPart).all()
-    result = [part_to_camel_dict(p) for p in parts]
-    db.close()
-    return jsonify(result)
+    return jsonify([part_to_camel_dict(p) for p in parts])
 
 @app.route('/api/inventory', methods=['POST'])
 @token_required
 def save_inventory():
     data = request.json
-    db = SessionLocal()
+    db = get_db()
     for part_data_camel in data:
         part_data = {to_snake_case(k): v for k, v in part_data_camel.items()}
         part_id = part_data.get('id')
         part = db.query(AviationPart).filter(AviationPart.id == part_id).first()
-        if not part: part = AviationPart(id=part_id); db.add(part)
+        if not part: 
+            part = AviationPart(id=part_id)
+            db.add(part)
         for key, value in part_data.items():
-            if hasattr(part, key): setattr(part, key, value)
+            if hasattr(part, key): 
+                setattr(part, key, value)
     db.commit()
-    db.close()
     return jsonify({"message": "Inventario sincronizado."})
 
 # --- ENDPOINTS DE GESTIÓN (ADMIN) ---
@@ -170,18 +227,16 @@ def save_inventory():
 @app.route('/api/users', methods=['GET'])
 @token_required
 def get_users():
-    db = SessionLocal()
+    db = get_db()
     users = db.query(User).all()
-    db.close()
     return jsonify([user_to_dict(u) for u in users])
 
 @app.route('/api/users', methods=['POST'])
 @token_required
 def create_user():
     data = request.json
-    db = SessionLocal()
+    db = get_db()
     if db.query(User).filter(func.lower(User.username) == data.get('username','').lower()).first():
-        db.close()
         return jsonify({"message": "El nombre de usuario ya existe"}), 409
     
     role = data.get('role', 'TECHNICIAN')
@@ -211,9 +266,6 @@ def create_user():
         try:
             cfg = server_email.load_config()
             subject = "Configuración de Cuenta - Control inventario"
-            
-            # Nota: En un entorno real, BASE_URL vendría de config. 
-            # Aquí usamos el origin de la petición o localhost:5173 por defecto.
             origin = request.headers.get('Origin', 'http://localhost:5173')
             setup_link = f"{origin}/?setupToken={setup_token}"
             
@@ -245,18 +297,15 @@ def create_user():
             logger.error(f"Error enviando email de configuración: {e}")
             email_status = {"success": False, "message": str(e)}
 
-    user_dict = user_to_dict(new_user)
-    db.close()
-    return jsonify({"user": user_dict, "email_status": email_status}), 201
+    return jsonify({"user": user_to_dict(new_user), "email_status": email_status}), 201
 
 @app.route('/api/users/<string:user_id>', methods=['PUT'])
 @token_required
 def update_user(user_id):
     data = request.json
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
         return jsonify({"message": "Usuario no encontrado"}), 404
     
     for key, value in data.items():
@@ -264,22 +313,18 @@ def update_user(user_id):
             setattr(user, key, value)
     
     db.commit()
-    user_dict = user_to_dict(user)
-    db.close()
-    return jsonify(user_dict)
+    return jsonify(user_to_dict(user))
 
 @app.route('/api/users/<string:user_id>', methods=['DELETE'])
 @token_required
 def delete_user(user_id):
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        db.close()
         return jsonify({"message": "Usuario no encontrado"}), 404
     
     db.delete(user)
     db.commit()
-    db.close()
     return jsonify({"message": "Usuario eliminado"}), 200
 
 @app.route('/api/users/generate-password', methods=['GET'])
@@ -291,10 +336,25 @@ def get_secure_password():
 @token_required
 def handle_send_email():
     data = request.json
+    recipient = data.get('recipient')
+    subject = data.get('subject')
+    html_body = data.get('html_body')
+    
+    if not recipient or not subject or not html_body:
+        return jsonify({"message": "Faltan datos requeridos (recipient, subject, html_body)"}), 400
+
     cfg = server_email.load_config()
-    success, message = server_email.send_via_smtp(cfg, data['recipient'], data['subject'], data['html_body'])
-    if success: return jsonify({"message": message}), 200
-    return jsonify({"message": message}), 500
+    # Diagnostic logs container using a list
+    logs = []
+    
+    success, message = server_email.send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=logs)
+    
+    if success: 
+        return jsonify({"message": message, "logs": logs}), 200
+    
+    # Log failure with more details
+    logger.error(f"Email failed to {recipient}: {message}")
+    return jsonify({"message": message, "logs": logs}), 500
 
 @app.route('/api/users/setup-password', methods=['POST'])
 def setup_password():
@@ -305,15 +365,13 @@ def setup_password():
     if not token or not new_password:
         return jsonify({"message": "Datos de configuración incompletos."}), 400
         
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(User.setup_token == token).first()
     
     if not user:
-        db.close()
         return jsonify({"message": "Token inválido o cuenta ya configurada."}), 404
         
     if user.setup_token_expiry < datetime.utcnow():
-        db.close()
         return jsonify({"message": "El token de configuración ha expirado."}), 401
     
     # Actualizar clave y limpiar token
@@ -321,9 +379,7 @@ def setup_password():
     user.must_change_password = False
     user.setup_token = None
     user.setup_token_expiry = None
-    
     db.commit()
-    db.close()
     
     return jsonify({"success": True, "message": "Contraseña configurada exitosamente. Ya puedes iniciar sesión."})
 
@@ -333,16 +389,16 @@ def setup_password():
 @token_required
 def email_config():
     if request.method == 'POST':
-        with open(server_email.CONFIG_PATH, 'w') as f: json.dump(request.json, f)
+        with open(server_email.CONFIG_PATH, 'w') as f: 
+            json.dump(request.json, f)
         return jsonify({"message": "Configuración guardada."})
     return jsonify(server_email.load_config())
 
 @app.route('/api/email-test', methods=['POST'])
 @token_required
 def email_test():
-    db = SessionLocal()
+    db = get_db()
     user = db.query(User).filter(User.id == request.user_id).first()
-    db.close()
     
     if user.role != 'ADMIN':
         return jsonify({"message": "Acceso denegado."}), 403
@@ -371,18 +427,18 @@ def email_test():
 @app.route('/api/db-backup', methods=['GET'])
 @token_required
 def db_backup():
-    db = SessionLocal()
+    db = get_db()
     parts = db.query(AviationPart).all()
     backup_data = [part_to_camel_dict(p) for p in parts]
-    backup_file = "backup.json"
-    with open(backup_file, 'w') as f: json.dump(backup_data, f, indent=2)
-    db.close()
+    backup_file = "/tmp/backup.json"
+    with open(backup_file, 'w') as f: 
+        json.dump(backup_data, f, indent=2)
     return send_file(backup_file, as_attachment=True)
 
 @app.route('/api/db-optimize', methods=['POST'])
 @token_required
 def db_optimize():
-    db = SessionLocal()
+    db = get_db()
     try:
         db.execute(text("VACUUM FULL"))
         db.commit()
@@ -390,29 +446,25 @@ def db_optimize():
     except Exception as e:
         db.rollback()
         return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        db.close()
 
 # --- ENDPOINTS DE IA Y ESTADÍSTICAS ---
 @app.route('/api/stats', methods=['GET'])
 @token_required
 def get_stats():
-    db = SessionLocal()
+    db = get_db()
     by_tag = db.query(AviationPart.tag_color, func.count(AviationPart.id)).group_by(AviationPart.tag_color).all()
     by_loc = db.query(AviationPart.location, func.count(AviationPart.id)).group_by(AviationPart.location).all()
-    db.close()
     return jsonify({"by_tag": dict(by_tag), "by_location": dict(by_loc)})
 
 @app.route('/api/stats/brands', methods=['GET'])
 @token_required
 def get_brand_stats():
-    db = SessionLocal()
+    db = get_db()
     brand_stats = db.query(AviationPart.brand, func.count(AviationPart.id)) \
         .filter(AviationPart.brand != None, AviationPart.brand != '') \
         .group_by(AviationPart.brand) \
         .order_by(func.count(AviationPart.id).desc()) \
         .limit(10).all()
-    db.close()
     return jsonify(dict(brand_stats))
 
 @app.route('/api/stats/location-breakdown', methods=['GET'])
@@ -422,7 +474,7 @@ def get_location_breakdown():
     if not location:
         return jsonify({"error": "Ubicación (loc) es requerida"}), 400
     
-    db = SessionLocal()
+    db = get_db()
     breakdown = db.query(AviationPart.tag_color, func.count(AviationPart.id)) \
         .filter(func.lower(AviationPart.location) == location.lower()) \
         .group_by(AviationPart.tag_color).all()
@@ -430,7 +482,6 @@ def get_location_breakdown():
     total = db.query(func.count(AviationPart.id)) \
         .filter(func.lower(AviationPart.location) == location.lower()).scalar() or 0
     
-    db.close()
     if total == 0:
         return jsonify({"error": "Ubicación no encontrada o vacía"}), 404
         
@@ -447,7 +498,7 @@ def get_type_breakdown():
     if not part_type:
         return jsonify({"error": "Tipo de parte (name) es requerido"}), 400
     
-    db = SessionLocal()
+    db = get_db()
     breakdown = db.query(AviationPart.tag_color, func.count(AviationPart.id)) \
         .filter(func.lower(AviationPart.part_name) == part_type.lower()) \
         .group_by(AviationPart.tag_color).all()
@@ -455,7 +506,6 @@ def get_type_breakdown():
     total = db.query(func.count(AviationPart.id)) \
         .filter(func.lower(AviationPart.part_name) == part_type.lower()).scalar() or 0
     
-    db.close()
     if total == 0:
         return jsonify({"error": "Tipo de parte no encontrado"}), 404
         
@@ -472,12 +522,11 @@ def stock_lookup():
     if not part_number:
         return jsonify({"error": "Part Number (pn) es requerido"}), 400
     
-    db = SessionLocal()
+    db = get_db()
     parts_query = db.query(AviationPart).filter(func.lower(AviationPart.pn) == part_number.lower())
     
     first_part = parts_query.first()
     if not first_part:
-        db.close()
         return jsonify({"error": "P/N no encontrado en el inventario"}), 404
 
     breakdown_query = db.query(AviationPart.tag_color, func.count(AviationPart.id)).filter(func.lower(AviationPart.pn) == part_number.lower()).group_by(AviationPart.tag_color).all()
@@ -485,8 +534,6 @@ def stock_lookup():
     total_count = parts_query.count()
     part_name = first_part.part_name
 
-    db.close()
-    
     return jsonify({
         "partName": part_name,
         "pn": part_number,
@@ -498,8 +545,10 @@ def stock_lookup():
 @token_required
 def amm_lookup():
     part_number = request.args.get('pn')
-    if not part_number: return jsonify({"error": "Part Number (pn) es requerido"}), 400
-    if not GEMINI_MODEL: return jsonify({"error": "El servicio de IA no está disponible"}), 503
+    if not part_number: 
+        return jsonify({"error": "Part Number (pn) es requerido"}), 400
+    if not GEMINI_MODEL: 
+        return jsonify({"error": "El servicio de IA no está disponible"}), 503
     try:
         response = GEMINI_MODEL.generate_content(f"Encuentra el manual AMM o CMM para P/N: {part_number}", tools=[{"google_search": {}}])
         sources = [{"uri": chunk.web.uri, "title": chunk.web.title} for chunk in response.candidates[0].grounding_metadata.grounding_attributions if hasattr(chunk, 'web')]
@@ -507,15 +556,6 @@ def amm_lookup():
     except Exception as e:
         logger.error(f"Error en consulta a Gemini: {e}")
         return jsonify({"error": "Fallo en la consulta al servicio de IA"}), 500
-
-# --- SERVE FRONTEND ---
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

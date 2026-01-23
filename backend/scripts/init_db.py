@@ -1,6 +1,8 @@
 
 import sys
-from models import Base, engine, User, UserSession, AviationPart
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app.models import Base, engine, User, UserSession, AviationPart
 
 def init_database():
     """
