@@ -27,11 +27,10 @@ RUN chmod +x ./scripts/*.sh
 
 EXPOSE 5000
 
-# Configuración de Gunicorn optimizada para producción
-# Nota: Usamos app.main:app porque server.py fue renombrado a main.py
-CMD ["gunicorn", \
-    "--bind", "0.0.0.0:5000", \
-    "--workers", "3", \
-    "--threads", "2", \
-    "--timeout", "60", \
-    "app.main:app"]
+# Usar entrypoint.sh que:
+# 1. Espera a que PostgreSQL esté listo
+# 2. Inicializa las tablas de la BD (idempotente)
+# 3. Crea el usuario admin si no existe
+# 4. Inicia Gunicorn
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+

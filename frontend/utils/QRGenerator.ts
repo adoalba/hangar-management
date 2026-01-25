@@ -53,3 +53,34 @@ export function generateOfflineQRSvg(size: number = 200): string {
     <text x="${size / 2}" y="${size / 2 + 15}" text-anchor="middle" font-size="10" fill="#999">OFFLINE</text>
   </svg>`;
 }
+
+/**
+ * Generate QR for location label
+ * @param locationCode - Location code (e.g., "RACK-01", "CONTAINER-A")
+ * @param baseUrl - Base URL of the application
+ */
+export function generateLocationQR(locationCode: string, baseUrl: string, size: number = 200): string {
+    const locationUrl = `${baseUrl}/location/${encodeURIComponent(locationCode)}`;
+    return generateQRUrl(locationUrl, size);
+}
+
+/**
+ * Parse scanned QR to extract part ID or location code
+ * @param qrData - Raw QR code data
+ */
+export function parseQRData(qrData: string): { type: 'part' | 'location' | 'unknown'; value: string } {
+    // Try to extract part ID from scan URL: /inventario/scan/{id} or /#/scan/{id}
+    const partMatch = qrData.match(/\/scan\/([a-zA-Z0-9-]+)/);
+    if (partMatch) {
+        return { type: 'part', value: partMatch[1] };
+    }
+
+    // Try to extract location from URL: /location/{code}
+    const locationMatch = qrData.match(/\/location\/([A-Z0-9-]+)/i);
+    if (locationMatch) {
+        return { type: 'location', value: locationMatch[1].toUpperCase() };
+    }
+
+    // Return as-is if no URL pattern matched
+    return { type: 'unknown', value: qrData };
+}

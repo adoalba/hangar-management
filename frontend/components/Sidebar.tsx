@@ -17,6 +17,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
   const menuItems = [
     { id: 'INVENTORY', icon: ICONS.Inventory, label: t.inventory, roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
     { id: 'HANGAR', icon: ICONS.Plus, label: t.add_part, roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
+    { id: 'SCAN', icon: ICONS.Scan, label: 'Scanner', roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
+    { id: 'QR_LABELS', icon: ICONS.QrCode, label: 'QR Labels', roles: [UserRole.ADMIN] },
     { id: 'USERS', icon: ICONS.Users, label: t.users, roles: [UserRole.ADMIN] },
   ];
 
@@ -39,8 +41,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
               key={item.id}
               onClick={() => setView(item.id)}
               className={`w-full flex items-center justify-center md:justify-start gap-3 p-3 rounded-xl transition-all duration-200 ${isActive
-                  ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 shadow-inner'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
+                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 shadow-inner'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
                 }`}
             >
               <Icon size={22} className={isActive ? 'text-indigo-400' : ''} />

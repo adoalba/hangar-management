@@ -231,6 +231,7 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => window.location.hash = `#/scan/${item.id}`} className="p-2 text-indigo-400 hover:text-white bg-indigo-900/50 border border-indigo-700/50 rounded-lg" title="Quick Scan"><ICONS.Scan size={14} /></button>
                       <button onClick={() => setSelectedPartView(item)} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg"><ICONS.Eye size={14} /></button>
                       <button onClick={() => handlePrint(item)} className="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg"><ICONS.Printer size={14} /></button>
                       {user.role !== UserRole.VIEWER && (

@@ -1,8 +1,9 @@
 
 import React from 'react';
 import {
-  BarChart3, Box, Users, Settings, LogOut, Plus, Search, Download, Printer, Camera, Trash2, Edit, History, Clock, ArrowRight, Eye, Mail, Send, X, Lock, UserX, UserCheck, Key, User as UserIcon, ShieldCheck, RefreshCw, FileSpreadsheet, Filter, Layers, CheckCircle, Wrench, RotateCcw, XCircle, Database, LayoutGrid, MapPin, Phone, Building2, AlertTriangle, UserPlus, BrainCircuit, Activity
+  BarChart3, Box, Users, Settings, LogOut, Plus, Search, Download, Printer, Camera, Trash2, Edit, History, Clock, ArrowRight, ArrowRightLeft, Eye, Mail, Send, X, Lock, UserX, UserCheck, Key, User as UserIcon, ShieldCheck, RefreshCw, FileSpreadsheet, Filter, Layers, CheckCircle, Wrench, RotateCcw, XCircle, Database, LayoutGrid, MapPin, Phone, Building2, AlertTriangle, UserPlus, BrainCircuit, Activity, Zap, ScanLine, QrCode
 } from 'lucide-react';
+
 
 export const BILINGUAL_LABELS = {
   name: "NOMBRE / NAME",
@@ -378,5 +379,5 @@ export const TRANSLATIONS = {
 };
 
 export const ICONS = {
-  Dashboard: BarChart3, Inventory: Box, Users: Users, Settings: Settings, Logout: LogOut, Plus: Plus, Search: Search, Download: Download, Printer: Printer, Camera: Camera, Trash: Trash2, Edit: Edit, Yellow: CheckCircle, Green: Wrench, White: RotateCcw, Red: XCircle, History: History, Clock: Clock, ArrowRight: ArrowRight, Eye: Eye, Mail: Mail, Send: Send, X: X, Lock: Lock, UserX: UserX, UserCheck: UserCheck, Key: Key, User: UserIcon, Shield: ShieldCheck, Refresh: RefreshCw, Spreadsheet: FileSpreadsheet, Filter: Filter, Layers: Layers, Database: Database, Layout: LayoutGrid, XCircle: XCircle, ShieldCheck: ShieldCheck, MapPin: MapPin, Phone: Phone, Building: Building2, AlertTriangle, UserPlus, BrainCircuit, Activity
+  Dashboard: BarChart3, Inventory: Box, Users: Users, Settings: Settings, Logout: LogOut, Plus: Plus, Search: Search, Download: Download, Printer: Printer, Camera: Camera, Trash: Trash2, Edit: Edit, Yellow: CheckCircle, Green: Wrench, White: RotateCcw, Red: XCircle, History: History, Clock: Clock, ArrowRight: ArrowRight, ArrowRightLeft: ArrowRightLeft, Eye: Eye, Mail: Mail, Send: Send, X: X, Lock: Lock, UserX: UserX, UserCheck: UserCheck, Key: Key, User: UserIcon, Shield: ShieldCheck, Refresh: RefreshCw, Spreadsheet: FileSpreadsheet, Filter: Filter, Layers: Layers, Database: Database, Layout: LayoutGrid, XCircle: XCircle, ShieldCheck: ShieldCheck, MapPin: MapPin, Phone: Phone, Building: Building2, AlertTriangle, UserPlus, BrainCircuit, Activity, Zap: Zap, Scan: ScanLine, QrCode: QrCode
 };

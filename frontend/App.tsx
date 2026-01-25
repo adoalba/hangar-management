@@ -14,6 +14,7 @@ import Settings from './components/Settings';
 import PrintTemplate from './components/PrintTemplate';
 import SetupPassword from './components/SetupPassword';
 import ScanPage from './components/ScanPage';
+import LocationQRGenerator from './components/LocationQRGenerator';
 
 const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+])[A-Za-z\d!@#$%^&*()_+]{10,}$/;
 
@@ -277,7 +278,8 @@ const App: React.FC = () => {
           {view === 'INVENTORY' && <InventoryTable inventory={inventory} setInventory={saveInventory} onEdit={(part) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
           {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement t={t} token={token!} addToast={addToast} />}
           {view === 'SETTINGS' && user.role === UserRole.ADMIN && <Settings token={token!} addToast={addToast} />}
-          {view === 'SCAN' && scanRecordId && <ScanPage recordId={scanRecordId} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
+          {view === 'SCAN' && <ScanPage recordId={scanRecordId || undefined} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
+          {view === 'QR_LABELS' && user.role === UserRole.ADMIN && <LocationQRGenerator t={t} onClose={() => setView('INVENTORY')} />}
         </div>
       </main>
 
