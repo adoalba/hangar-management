@@ -5,7 +5,6 @@ import { User, Language, AviationPart, TagColor, UserRole, MovementEvent } from 
 import { TRANSLATIONS, ICONS } from './constants';
 import Login from './components/Login';
 import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
 import HangarMenu from './components/HangarMenu';
 import PartForm from './components/PartForm';
 import InventoryTable from './components/InventoryTable';
@@ -14,6 +13,7 @@ import UserManagement from './components/UserManagement';
 import Settings from './components/Settings';
 import PrintTemplate from './components/PrintTemplate';
 import SetupPassword from './components/SetupPassword';
+import ScanPage from './components/ScanPage';
 
 const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+])[A-Za-z\d!@#$%^&*()_+]{10,}$/;
 
@@ -39,7 +39,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('session_token'));
   const [language, setLanguage] = useState<Language>('ES');
-  const [view, setView] = useState('DASHBOARD');
+  const [view, setView] = useState('INVENTORY');
   const [inventory, setInventory] = useState<AviationPart[]>([]);
   const [selectedTag, setSelectedTag] = useState<TagColor | null>(null);
   const [editingPart, setEditingPart] = useState<AviationPart | null>(null);
@@ -47,6 +47,7 @@ const App: React.FC = () => {
   const [showLocationPopup, setShowLocationPopup] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [setupToken, setSetupToken] = useState<string | null>(null);
+  const [scanRecordId, setScanRecordId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -54,6 +55,37 @@ const App: React.FC = () => {
     if (token) {
       setSetupToken(token);
     }
+
+    // Check for scan route - supports multiple formats:
+    // 1. Hash: /#/scan/{recordId}
+    // 2. Path: /inventario/scan/{recordId}
+    const handleRouteChange = () => {
+      const hash = window.location.hash;
+      const path = window.location.pathname;
+
+      // Hash-based routing
+      const hashMatch = hash.match(/#\/scan\/(.+)/);
+      if (hashMatch && hashMatch[1]) {
+        setScanRecordId(hashMatch[1]);
+        setView('SCAN');
+        return;
+      }
+
+      // Path-based routing (for QR scans)
+      const pathMatch = path.match(/\/inventario\/scan\/(.+)/);
+      if (pathMatch && pathMatch[1]) {
+        setScanRecordId(pathMatch[1]);
+        setView('SCAN');
+        return;
+      }
+    };
+    handleRouteChange();
+    window.addEventListener('hashchange', handleRouteChange);
+    window.addEventListener('popstate', handleRouteChange);
+    return () => {
+      window.removeEventListener('hashchange', handleRouteChange);
+      window.removeEventListener('popstate', handleRouteChange);
+    };
   }, []);
 
   const [newPassword, setNewPassword] = useState('');
@@ -136,7 +168,7 @@ const App: React.FC = () => {
     setToken(sessionToken);
     localStorage.setItem('session_token', sessionToken);
     localStorage.setItem('user_data', JSON.stringify(u));
-    setView('DASHBOARD');
+    setView('INVENTORY');
   };
 
   const triggerPrint = (part: AviationPart) => {
@@ -240,12 +272,12 @@ const App: React.FC = () => {
         </header>
 
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-          {view === 'DASHBOARD' && <Dashboard inventory={inventory} t={t} />}
           {view === 'HANGAR' && !selectedTag && !editingPart && <HangarMenu onSelectTag={(tag) => setSelectedTag(tag)} t={t} />}
           {(selectedTag || editingPart) && view === 'HANGAR' && <PartForm tag={selectedTag || editingPart!.tagColor} initialData={editingPart || undefined} onSubmit={(data) => { setPendingPartData(data); setShowLocationPopup(true); }} onCancel={() => { setSelectedTag(null); setEditingPart(null); setView('INVENTORY'); }} t={t} />}
           {view === 'INVENTORY' && <InventoryTable inventory={inventory} setInventory={saveInventory} onEdit={(part) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
           {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement t={t} token={token!} addToast={addToast} />}
           {view === 'SETTINGS' && user.role === UserRole.ADMIN && <Settings token={token!} addToast={addToast} />}
+          {view === 'SCAN' && scanRecordId && <ScanPage recordId={scanRecordId} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
         </div>
       </main>
 

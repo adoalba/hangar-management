@@ -1,4 +1,3 @@
-
 {
   "name": "aerologistics-pro",
   "private": true,
@@ -12,9 +11,7 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "lucide-react": "^0.460.0",
-    "recharts": "^2.13.3",
-    "@google/genai": "^1.37.0"
+    "lucide-react": "^0.460.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

@@ -15,9 +15,8 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout, t, language, setLanguage }) => {
   const menuItems = [
-    { id: 'DASHBOARD', icon: ICONS.Dashboard, label: t.dashboard, roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
-    { id: 'HANGAR', icon: ICONS.Plus, label: t.add_part, roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
     { id: 'INVENTORY', icon: ICONS.Inventory, label: t.inventory, roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
+    { id: 'HANGAR', icon: ICONS.Plus, label: t.add_part, roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
     { id: 'USERS', icon: ICONS.Users, label: t.users, roles: [UserRole.ADMIN] },
   ];
 
@@ -39,11 +38,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`w-full flex items-center justify-center md:justify-start gap-3 p-3 rounded-xl transition-all duration-200 ${
-                isActive 
-                  ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 shadow-inner' 
+              className={`w-full flex items-center justify-center md:justify-start gap-3 p-3 rounded-xl transition-all duration-200 ${isActive
+                  ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 shadow-inner'
                   : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
-              }`}
+                }`}
             >
               <Icon size={22} className={isActive ? 'text-indigo-400' : ''} />
               <span className="hidden md:block font-medium">{item.label}</span>
@@ -66,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
           <span className="hidden md:block font-medium">{t.language_toggle}</span>
         </button>
 
-        <button 
+        <button
           onClick={onLogout}
           className="w-full flex items-center justify-center md:justify-start gap-3 p-3 text-red-400 hover:bg-red-400/10 rounded-xl transition-all group"
         >

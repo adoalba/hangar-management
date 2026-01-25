@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Send, X, Loader2 } from 'lucide-react';
 import { AviationPart } from '../types';
+import { sendEmailViaSmtp, EmailLog } from '../services/emailService';
 
 interface EmailModalProps {
     part: AviationPart;
@@ -20,77 +21,26 @@ const EmailModal: React.FC<EmailModalProps> = ({ part, onClose, token, addToast,
 
         setSending(true);
 
-        // Construct a beautiful HTML body for the email
-        // Note: In a real app, you might use a template engine on the backend, 
-        // but sending pre-rendered HTML is a quick way to get rich emails.
-        const subject = `Aviation Part Details: ${part.partName} (P/N: ${part.pn})`;
-        const htmlBody = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 20px; padding: 0; overflow: hidden; background-color: #ffffff;">
-        <div style="background-color: #0f172a; padding: 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 20px; text-transform: uppercase;">Part Details</h1>
-          <p style="color: #94a3b8; font-size: 12px; margin-top: 8px;">AeroLogistics Inventory System</p>
-        </div>
-        
-        <div style="padding: 32px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
-             <div>
-               <h2 style="margin: 0; font-size: 24px; color: #0f172a;">${part.partName}</h2>
-               <p style="margin: 4px 0 0 0; color: #64748b;">P/N: <strong>${part.pn}</strong></p>
-             </div>
-             <div style="background-color: #f1f5f9; padding: 8px 16px; border-radius: 8px; font-weight: bold; color: #475569;">
-               ${part.tagColor} TAG
-             </div>
-          </div>
-
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-            <tr>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Serial Number</td>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #0f172a; text-align: right;">${part.sn}</td>
-            </tr>
-            <tr>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Location</td>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #0f172a; text-align: right;">${part.location}</td>
-            </tr>
-            <tr>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; color: #64748b;">Condition</td>
-              <td style="padding: 12px; border-bottom: 1px solid #f1f5f9; font-weight: bold; color: #0f172a; text-align: right;">${part.cso || 'N/A'} (CSO)</td>
-            </tr>
-          </table>
-
-          <div style="background-color: #f8fafc; padding: 16px; border-radius: 12px; text-align: center;">
-            <p style="margin: 0; color: #64748b; font-size: 12px;">Data verified by ${part.technicianName}</p>
-          </div>
-        </div>
-        
-        <div style="background-color: #f1f5f9; padding: 16px; text-align: center; color: #94a3b8; font-size: 10px;">
-          Generated automatically by AeroLogistics Pro
-        </div>
-      </div>
-    `;
-
         try {
-            const res = await fetch('/api/send-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    recipient,
-                    subject,
-                    html_body: htmlBody
-                })
-            });
+            // Use the industrial certification email service
+            // onLog callback logs to console for debugging
+            const success = await sendEmailViaSmtp(
+                recipient,
+                part,
+                "", // aiReport not used in this template
+                (log: EmailLog) => console.log(`[Email Service]: ${log.message}`),
+                token
+            );
 
-            if (res.ok) {
-                addToast(t.email_sent_success || "Email sent successfully", "success");
+            if (success) {
+                addToast(t.email_sent_success || "Certification email sent successfully", "success");
                 onClose();
             } else {
-                const err = await res.json();
-                addToast(err.message || "Failed to send email", "error");
+                addToast("Failed to send certification email. Check server logs.", "error");
             }
         } catch (error) {
-            addToast("Network error", "error");
+            console.error(error);
+            addToast("Network error or server unavailable", "error");
         } finally {
             setSending(false);
         }

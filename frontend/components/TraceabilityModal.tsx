@@ -227,6 +227,43 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
 
                 {/* Timeline Content */}
                 <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar print:bg-white print:p-8 print:overflow-visible">
+
+                    {/* AUDIT SUMMARY STATS */}
+                    {sortedHistory.length > 0 && (
+                        <div className="mb-6 p-4 bg-white rounded-2xl border border-slate-200 print:border-black">
+                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+                                Audit Summary / Resumen de Auditoría
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="text-center p-3 bg-indigo-50 rounded-xl">
+                                    <p className="text-2xl font-black text-indigo-600">{sortedHistory.length}</p>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Total Events</p>
+                                </div>
+                                <div className="text-center p-3 bg-emerald-50 rounded-xl">
+                                    <p className="text-2xl font-black text-emerald-600">
+                                        {sortedHistory.filter(e => e.type === 'LOCATION_CHANGE').length}
+                                    </p>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Moves</p>
+                                </div>
+                                <div className="text-center p-3 bg-amber-50 rounded-xl">
+                                    <p className="text-2xl font-black text-amber-600">
+                                        {new Set(sortedHistory.map(e => e.newLocation).filter(Boolean)).size}
+                                    </p>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Locations</p>
+                                </div>
+                                <div className="text-center p-3 bg-slate-100 rounded-xl">
+                                    <p className="text-sm font-black text-slate-700">
+                                        {sortedHistory.length > 0
+                                            ? new Date(sortedHistory[sortedHistory.length - 1].timestamp).toLocaleDateString()
+                                            : 'N/A'
+                                        }
+                                    </p>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Created</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="relative pl-8 border-l-2 border-indigo-200 space-y-8 print:border-black print:pl-4 print:space-y-4">
                         {sortedHistory.length === 0 ? (
                             <div className="text-center py-12 text-slate-400">

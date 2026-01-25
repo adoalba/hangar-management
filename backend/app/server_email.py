@@ -3,7 +3,11 @@ import ssl
 import json
 import os
 import logging
+import base64
 from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 
 CONFIG_PATH = "email_config.json"
 logger = logging.getLogger(__name__)
@@ -27,8 +31,19 @@ def load_config():
         "resend_from": "operaciones@aerologistics.com"
     }
 
-def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None):
-    """Envía un correo electrónico utilizando SMTP con soporte para SSL/STARTTLS."""
+def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, attachments=None):
+    """
+    Envía un correo electrónico utilizando SMTP con soporte para SSL/STARTTLS.
+    
+    Args:
+        cfg: Configuración SMTP
+        recipient: Email del destinatario
+        subject: Asunto del email
+        html_body: Cuerpo HTML del email
+        diagnostic_logs: Lista opcional para logs de diagnóstico
+        attachments: Dict opcional con CID como clave y datos base64 de imagen como valor
+                     Ejemplo: {'tech_signature': 'data:image/png;base64,iVBORw0KG...'}
+    """
     def log(msg):
         logger.info(msg)
         if diagnostic_logs is not None:
@@ -45,12 +60,45 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None):
             if not server_addr or not user or not password:
                 return False, "Configuración SMTP incompleta (servidor, usuario o clave faltantes)."
 
-            msg = EmailMessage()
-            msg['Subject'] = subject
-            msg['From'] = user
-            msg['To'] = recipient
-            msg.set_content("AeroLogistics Pro - Requiere cliente con soporte HTML.")
-            msg.add_alternative(html_body, subtype='html')
+            # Si hay attachments, usar MIMEMultipart para soportar imágenes embebidas
+            if attachments and len(attachments) > 0:
+                msg = MIMEMultipart('related')
+                msg['Subject'] = subject
+                msg['From'] = user
+                msg['To'] = recipient
+                
+                # Agregar el cuerpo HTML
+                msg_html = MIMEText(html_body, 'html')
+                msg.attach(msg_html)
+                
+                # Agregar imágenes con CID
+                for cid, image_data in attachments.items():
+                    try:
+                        # Extraer el base64 del data URL si es necesario
+                        if image_data.startswith('data:image'):
+                            # Formato: data:image/png;base64,iVBORw0KG...
+                            image_data = image_data.split(',', 1)[1]
+                        
+                        # Decodificar base64
+                        img_bytes = base64.b64decode(image_data)
+                        
+                        # Crear MIMEImage
+                        img = MIMEImage(img_bytes)
+                        img.add_header('Content-ID', f'<{cid}>')
+                        img.add_header('Content-Disposition', 'inline', filename=f'{cid}.png')
+                        msg.attach(img)
+                        
+                        log(f"Imagen embebida: {cid}")
+                    except Exception as e:
+                        log(f"Error procesando imagen {cid}: {e}")
+            else:
+                # Sin attachments, usar EmailMessage simple
+                msg = EmailMessage()
+                msg['Subject'] = subject
+                msg['From'] = user
+                msg['To'] = recipient
+                msg.set_content("AeroLogistics Pro - Requiere cliente con soporte HTML.")
+                msg.add_alternative(html_body, subtype='html')
 
             context = ssl.create_default_context()
             

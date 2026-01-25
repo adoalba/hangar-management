@@ -339,6 +339,7 @@ def handle_send_email():
     recipient = data.get('recipient')
     subject = data.get('subject')
     html_body = data.get('html_body')
+    attachments = data.get('attachments')  # Optional: dict with CID -> base64 image data
     
     if not recipient or not subject or not html_body:
         return jsonify({"message": "Faltan datos requeridos (recipient, subject, html_body)"}), 400
@@ -347,7 +348,7 @@ def handle_send_email():
     # Diagnostic logs container using a list
     logs = []
     
-    success, message = server_email.send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=logs)
+    success, message = server_email.send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=logs, attachments=attachments)
     
     if success: 
         return jsonify({"message": message, "logs": logs}), 200

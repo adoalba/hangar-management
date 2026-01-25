@@ -1,12 +1,13 @@
 import React from 'react';
 import { AviationPart, TagColor } from '../types';
+import { generateQRDataUri } from '../utils/QRGenerator';
 
 interface PrintTemplateProps {
   part: AviationPart;
   t: any;
 }
 
-const PrintHeader: React.FC<{ part: AviationPart, t: (key: string) => string }> = ({ part, t }) => {
+const PrintHeader: React.FC<{ part: AviationPart, qrDataUri: string, t: (key: string) => string }> = ({ part, qrDataUri, t }) => {
   const titles = {
     [TagColor.YELLOW]: "SERVICEABLE MATERIAL / MATERIAL APROBADO",
     [TagColor.GREEN]: "REPAIRABLE MATERIAL / MATERIAL REPARABLE",
@@ -15,7 +16,7 @@ const PrintHeader: React.FC<{ part: AviationPart, t: (key: string) => string }> 
   };
   return (
     <div className="grid grid-cols-12 border-b-2 border-black mb-1 pb-1">
-      <div className="col-span-4 flex items-center">
+      <div className="col-span-3 flex items-center">
         <div className="flex items-center gap-2">
           <div className="text-left">
             <h1 className="text-lg font-black text-slate-900 leading-none tracking-tight">INVENTORY</h1>
@@ -24,7 +25,19 @@ const PrintHeader: React.FC<{ part: AviationPart, t: (key: string) => string }> 
           </div>
         </div>
       </div>
-      <div className="col-span-8 flex items-center justify-end">
+      {/* QR CODE - Upper Right with Quiet Zone */}
+      <div className="col-span-2 flex items-center justify-center">
+        <div className="p-1 bg-white border border-black">
+          <img
+            src={qrDataUri}
+            alt="QR Code"
+            className="w-[70px] h-[70px]"
+            style={{ imageRendering: 'pixelated' }}
+          />
+          <p className="text-[4px] text-center font-bold text-slate-600 mt-0.5">SCAN TO TRACK</p>
+        </div>
+      </div>
+      <div className="col-span-7 flex items-center justify-end">
         <div className="border-[2px] border-black px-4 py-1.5 bg-gray-50/50">
           <h2 className="text-lg font-black uppercase tracking-tight text-right leading-none">{titles[part.tagColor]}</h2>
         </div>
@@ -134,6 +147,12 @@ const SignaturesSection: React.FC<{ part: AviationPart }> = ({ part }) => (
 const PrintTemplate: React.FC<PrintTemplateProps> = ({ part, t }) => {
   const shelfLifeDate = part?.shelfLife ? new Date(part.shelfLife).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
 
+  // Generate SCANNABLE QR code using external API
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://wca.app';
+  const scanUrl = `${baseUrl}/inventario/scan/${part.id}`;
+  // Use QR Server API - guaranteed to be scannable
+  const qrDataUri = generateQRDataUri(scanUrl, 150);
+
   const getTagColorHex = (tag: TagColor) => {
     switch (tag) {
       case TagColor.YELLOW: return '#eab308'; // yellow-500
@@ -158,7 +177,7 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ part, t }) => {
         className="print-card flex flex-col border-[10px] p-5 h-full max-h-[285mm] box-border"
         style={{ borderColor: getTagColorHex(part.tagColor) }}
       >
-        <PrintHeader part={part} t={t} />
+        <PrintHeader part={part} qrDataUri={qrDataUri} t={t} />
 
         <div className="grid grid-cols-12 w-full gap-y-0.5">
           {/* 01. ADMINISTRATIVE RECORD / DATOS DE REGISTRO */}
@@ -186,6 +205,33 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ part, t }) => {
               )}
             </div>
           </div>
+
+          {/* MANDATORY PHYSICAL LOCATION - ALL CARD TYPES */}
+          {(() => {
+            // Determine label based on card type
+            let locationLabel = 'LOCATION / UBICACIÓN';
+            if (part.tagColor === TagColor.YELLOW) {
+              locationLabel = 'FINAL LOCATION / POSICIÓN FINAL';
+            } else if (part.tagColor === TagColor.WHITE || part.tagColor === TagColor.GREEN) {
+              locationLabel = 'STORAGE LOC / LUGAR DE ALMACÉN';
+            } else if (part.tagColor === TagColor.RED) {
+              locationLabel = 'QUARANTINE / ZONA CUARENTENA';
+            }
+
+            // Get location value with fallback
+            const locationValue = part.location || part.physicalStorageLocation || 'PENDIENTE / POR DEFINIR';
+
+            return (
+              <div className="col-span-12 border-2 border-black bg-amber-50 flex items-stretch mt-1">
+                <div className="w-1/4 border-r-2 border-black bg-slate-900 p-1.5 flex items-center">
+                  <span className="text-[7px] font-black uppercase text-white tracking-wide">{locationLabel}</span>
+                </div>
+                <div className="flex-1 p-2 flex items-center bg-white">
+                  <span className="text-[14px] font-black uppercase text-slate-900 tracking-tight">{locationValue}</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 03. TIMES AND CYCLES / TIEMPOS Y CICLOS */}
           <SectionHeader title="03. TIMES AND CYCLES / TIEMPOS Y CICLOS" />
@@ -256,9 +302,20 @@ const PrintTemplate: React.FC<PrintTemplateProps> = ({ part, t }) => {
         </div>
 
         <div className="mt-auto pt-2 flex justify-between items-center text-[6px] font-black text-slate-400 uppercase tracking-widest">
-          <div className="flex gap-4">
-            <span>RECORD ID: {part.id}</span>
-            <span>VER: 5.0.0-FIXED</span>
+          <div className="flex gap-4 items-center">
+            {/* QR CODE */}
+            <div className="flex flex-col items-center">
+              <img
+                src={generateQRDataUri(`${window.location.origin}/#/scan/${part.id}`, 60)}
+                alt="QR Code"
+                className="w-[60px] h-[60px] border border-black"
+              />
+              <span className="text-[5px] mt-1">SCAN FOR QUICK ACTION</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span>RECORD ID: {part.id}</span>
+              <span>VER: 6.0.0-QR</span>
+            </div>
           </div>
           <div className="bg-slate-100 px-2 py-0.5 rounded italic">
             DIGITALLY GENERATED DOCUMENT - SECURE AVIATION CERTIFICATION LAYER
