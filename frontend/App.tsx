@@ -1,20 +1,24 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { User, Language, AviationPart, TagColor, UserRole, MovementEvent } from './types';
 import { TRANSLATIONS, ICONS } from './constants';
-import Login from './components/Login';
-import Sidebar from './components/Sidebar';
-import HangarMenu from './components/HangarMenu';
-import PartForm from './components/PartForm';
-import InventoryTable from './components/InventoryTable';
-import LocationPopup from './components/LocationPopup';
-import UserManagement from './components/UserManagement';
-import Settings from './components/Settings';
-import PrintTemplate from './components/PrintTemplate';
-import SetupPassword from './components/SetupPassword';
-import ScanPage from './components/ScanPage';
-import LocationQRGenerator from './components/LocationQRGenerator';
+// Lazy Load Core Components preventing initial bundle bloat
+const Login = lazy(() => import('./components/Login'));
+const Sidebar = lazy(() => import('./components/Sidebar'));
+const HangarMenu = lazy(() => import('./components/HangarMenu'));
+
+// Lazy Load Heavy Components for FCP optimization
+const PartForm = lazy(() => import('./components/PartForm'));
+const InventoryTable = lazy(() => import('./components/InventoryTable'));
+const LocationPopup = lazy(() => import('./components/LocationPopup'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const Settings = lazy(() => import('./components/Settings'));
+const PrintTemplate = lazy(() => import('./components/PrintTemplate'));
+const SetupPassword = lazy(() => import('./components/SetupPassword'));
+const ScanPage = lazy(() => import('./components/ScanPage'));
+const LocationQRGenerator = lazy(() => import('./components/LocationQRGenerator'));
+const ReportsModule = lazy(() => import('./components/ReportsModule'));
 
 const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+])[A-Za-z\d!@#$%^&*()_+]{10,}$/;
 
@@ -25,14 +29,21 @@ interface Toast {
 }
 
 const ToastContainer: React.FC<{ toasts: Toast[], removeToast: (id: number) => void }> = ({ toasts, removeToast }) => (
-  <div className="fixed top-8 right-8 z-[200] space-y-3">
+  <div className="fixed top-8 right-8 z-[200] space-y-3 pointer-events-none">
     {toasts.map(toast => (
-      <div key={toast.id} className={`flex items-center gap-4 p-4 rounded-2xl shadow-2xl border animate-in slide-in-from-top-4 ${toast.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+      <div key={toast.id} className={`pointer-events-auto flex items-center gap-4 p-4 rounded-2xl shadow-2xl border animate-in slide-in-from-top-4 ${toast.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
         {toast.type === 'success' ? <ICONS.Yellow size={20} /> : <ICONS.XCircle size={20} />}
         <p className="text-sm font-bold">{toast.message}</p>
-        <button onClick={() => removeToast(toast.id)} className="ml-4 opacity-50 hover:opacity-100"><ICONS.X size={16} /></button>
+        <button onClick={() => removeToast(toast.id)} className="ml-4 opacity-50 hover:opacity-100" aria-label="Close notification"><ICONS.X size={16} /></button>
       </div>
     ))}
+  </div>
+);
+
+// Loading Fallback Component
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center h-64">
+    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-primary"></div>
   </div>
 );
 
@@ -56,23 +67,15 @@ const App: React.FC = () => {
     if (token) {
       setSetupToken(token);
     }
-
-    // Check for scan route - supports multiple formats:
-    // 1. Hash: /#/scan/{recordId}
-    // 2. Path: /inventario/scan/{recordId}
     const handleRouteChange = () => {
       const hash = window.location.hash;
       const path = window.location.pathname;
-
-      // Hash-based routing
       const hashMatch = hash.match(/#\/scan\/(.+)/);
       if (hashMatch && hashMatch[1]) {
         setScanRecordId(hashMatch[1]);
         setView('SCAN');
         return;
       }
-
-      // Path-based routing (for QR scans)
       const pathMatch = path.match(/\/inventario\/scan\/(.+)/);
       if (pathMatch && pathMatch[1]) {
         setScanRecordId(pathMatch[1]);
@@ -140,12 +143,12 @@ const App: React.FC = () => {
           } else {
             console.error("Inventory API did not return an array:", data);
             addToast("Error de datos del inventario.", "error");
-            setInventory([]); // Set to empty array to prevent crashes
+            setInventory([]);
           }
         })
         .catch(() => {
           addToast("Error de comunicación API.", "error");
-          setInventory([]); // Also set to empty on fetch error
+          setInventory([]);
         });
     }
   }, [user, token, addToast, handleLogout]);
@@ -177,20 +180,21 @@ const App: React.FC = () => {
     if (printSection) {
       printSection.innerHTML = '';
       const root = createRoot(printSection);
-
-      // Aviation Standard Filename: TAG_PN_SN_DATE
       const tagLabel = part.tagColor ? (t[`${part.tagColor.toLowerCase()}_tag` as keyof typeof t] as string)?.split(' ')[0] : 'TAG';
       const cleanPN = (part.pn || 'N-A').replace(/[/\\?%*:|"<>]/g, '-');
       const cleanSN = (part.sn || 'N-A').replace(/[/\\?%*:|"<>]/g, '-');
       const dateStr = new Date().toISOString().split('T')[0];
       const oldTitle = document.title;
       document.title = `${tagLabel}_${cleanPN}_${cleanSN}_${dateStr}`;
-
-      root.render(<PrintTemplate part={part} t={t} />);
+      root.render(
+        <Suspense fallback={<div>Loading Print...</div>}>
+          <PrintTemplate part={part} t={t} />
+        </Suspense>
+      );
       setTimeout(() => {
         window.print();
         document.title = oldTitle;
-      }, 1000); // 1s sync for full asset rendering
+      }, 1000);
     }
   };
 
@@ -198,7 +202,6 @@ const App: React.FC = () => {
     setPassError('');
     if (newPassword !== confirmPassword) { setPassError(language === 'ES' ? "Las contraseñas no coinciden." : "Passwords do not match."); return; }
     if (!PASS_REGEX.test(newPassword)) { setPassError(t.password_complexity_error); return; }
-
     try {
       const res = await fetch('/api/update-password', {
         method: 'POST',
@@ -221,7 +224,6 @@ const App: React.FC = () => {
       ? { ...editingPart, ...pendingPartData, location, history: [...(editingPart.history || []), newEvent] } as AviationPart
       : { ...pendingPartData, id: `${Date.now()}`, tagColor: selectedTag!, location, history: [newEvent], registrationDate: pendingPartData.registrationDate || new Date().toISOString().split('T')[0] } as AviationPart;
     const updatedInventory = editingPart ? inventory.map(p => p.id === editingPart.id ? finalPart : p) : [...inventory, finalPart];
-
     await saveInventory(updatedInventory);
     triggerPrint(finalPart);
     setShowLocationPopup(false); setPendingPartData(null); setEditingPart(null); setSelectedTag(null); setView('INVENTORY');
@@ -229,61 +231,81 @@ const App: React.FC = () => {
 
   if (setupToken) {
     return (
-      <SetupPassword
-        token={setupToken}
-        language={language}
-        onSuccess={() => {
-          setSetupToken(null);
-          window.history.replaceState({}, document.title, "/");
-        }}
-      />
+      <Suspense fallback={<LoadingSpinner />}>
+        <SetupPassword token={setupToken} language={language} onSuccess={() => { setSetupToken(null); window.history.replaceState({}, document.title, "/"); }} />
+      </Suspense>
     );
   }
 
   if (!user || !token) {
-    return <Login onLogin={handleLogin} language={language} setLanguage={setLanguage} />;
+    return <Suspense fallback={<LoadingSpinner />}><Login onLogin={handleLogin} language={language} setLanguage={setLanguage} /></Suspense>;
   }
 
   if (user.mustChangePassword) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-slate-900 p-10 rounded-[2.5rem] border border-slate-800 shadow-2xl space-y-8">
-          <div className="text-center"><div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4"><ICONS.Key size={32} className="text-white" /></div><h2 className="text-2xl font-black text-white">{t.must_change_pass_title}</h2><p className="text-slate-500 text-xs mt-2 uppercase tracking-widest font-bold">{t.must_change_pass_desc}</p></div>
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center p-4 text-slate-800">
+        <div className="max-w-md w-full bg-brand-surface p-10 rounded-[2.5rem] border border-slate-200 shadow-2xl space-y-8">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-4"><ICONS.Key size={32} className="text-white" /></div>
+            <h2 className="text-2xl font-black text-brand-text">{t.must_change_pass_title}</h2>
+            <p className="text-slate-500 text-xs mt-2 uppercase tracking-widest font-bold">{t.must_change_pass_desc}</p>
+          </div>
           <div className="space-y-4">
             {passError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-[9px] font-black uppercase rounded-xl flex items-center gap-2"><ICONS.AlertTriangle size={14} /> {passError}</div>}
-            <input type="password" placeholder={t.new_password} value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            <input type="password" placeholder={t.confirm_password} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            <button onClick={handleMandatoryPasswordChange} className="w-full bg-indigo-600 py-4 rounded-2xl text-white font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-600/20">{t.save_password}</button>
+            <input type="password" placeholder={t.new_password} value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-white border border-slate-300 rounded-2xl p-4 text-slate-900 outline-none focus:ring-2 focus:ring-brand-primary/50" />
+            <input type="password" placeholder={t.confirm_password} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full bg-white border border-slate-300 rounded-2xl p-4 text-slate-900 outline-none focus:ring-2 focus:ring-brand-primary/50" />
+            <button onClick={handleMandatoryPasswordChange} className="w-full bg-brand-primary py-4 rounded-2xl text-white font-black uppercase tracking-widest text-xs shadow-xl shadow-brand-primary/20 hover:bg-brand-primary-hover transition-colors">{t.save_password}</button>
           </div>
-          <button onClick={handleLogout} className="w-full text-slate-500 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors">{t.logout}</button>
+          <button onClick={handleLogout} className="w-full text-slate-500 text-[10px] font-black uppercase tracking-widest hover:text-brand-text transition-colors">{t.logout}</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col md:flex-row min-h-screen bg-brand-bg text-brand-text font-sans">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <Sidebar user={user} currentView={view} setView={setView} onLogout={handleLogout} t={t} language={language} setLanguage={setLanguage} />
+      <Suspense fallback={null}><Sidebar user={user} currentView={view} setView={setView} onLogout={handleLogout} t={t} language={language} setLanguage={setLanguage} /></Suspense>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-        <header className="mb-10 flex justify-between items-center">
-          <div><h1 className="text-4xl font-black tracking-tighter uppercase mb-1">{view === 'HANGAR' && (selectedTag || editingPart) ? t.add_part : ((t as any)[view.toLowerCase()] || view)}</h1><div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" /><p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">{t.operational_terminal}</p></div></div>
-          <div className="flex items-center gap-3"><div className="hidden md:flex flex-col items-end mr-4"><span className="text-[10px] font-black text-indigo-400 uppercase">{user.role}</span><span className="text-xs font-bold">{user.name}</span></div>{user.role === UserRole.ADMIN && (<button onClick={() => setView('SETTINGS')} className={`p-3 rounded-2xl border transition-all ${view === 'SETTINGS' ? 'bg-indigo-600' : 'bg-slate-900 border-slate-800'}`}><ICONS.Settings size={20} /></button>)}</div>
+      <main className="flex-1 w-full p-4 pb-24 md:p-8 md:pb-8">
+        <header className="mb-6 md:mb-10 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tighter uppercase mb-1 truncate max-w-[200px] md:max-w-none text-brand-text">
+              {view === 'HANGAR' && (selectedTag || editingPart) ? t.add_part : ((t as any)[view.toLowerCase()] || view)}
+            </h1>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
+              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">{t.operational_terminal}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex flex-col items-end mr-4">
+              <span className="text-[10px] font-black text-brand-primary uppercase min-w-[30px] text-right">{user.role}</span>
+              <span className="text-xs font-bold text-brand-text">{user.name}</span>
+            </div>
+            {user.role === UserRole.ADMIN && (
+              <button onClick={() => setView('SETTINGS')} className={`p-3 rounded-2xl border transition-all ${view === 'SETTINGS' ? 'bg-brand-primary text-white border-brand-primary' : 'bg-brand-surface border-slate-200 text-slate-500 hover:border-brand-primary'}`} aria-label="Settings">
+                <ICONS.Settings size={20} />
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-          {view === 'HANGAR' && !selectedTag && !editingPart && <HangarMenu onSelectTag={(tag) => setSelectedTag(tag)} t={t} />}
-          {(selectedTag || editingPart) && view === 'HANGAR' && <PartForm tag={selectedTag || editingPart!.tagColor} initialData={editingPart || undefined} onSubmit={(data) => { setPendingPartData(data); setShowLocationPopup(true); }} onCancel={() => { setSelectedTag(null); setEditingPart(null); setView('INVENTORY'); }} t={t} />}
-          {view === 'INVENTORY' && <InventoryTable inventory={inventory} setInventory={saveInventory} onEdit={(part) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
-          {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement t={t} token={token!} addToast={addToast} />}
-          {view === 'SETTINGS' && user.role === UserRole.ADMIN && <Settings token={token!} addToast={addToast} />}
-          {view === 'SCAN' && <ScanPage recordId={scanRecordId || undefined} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
-          {view === 'QR_LABELS' && user.role === UserRole.ADMIN && <LocationQRGenerator t={t} onClose={() => setView('INVENTORY')} />}
+          <Suspense fallback={<LoadingSpinner />}>
+            {view === 'HANGAR' && !selectedTag && !editingPart && <HangarMenu onSelectTag={(tag) => setSelectedTag(tag)} t={t} />}
+            {(selectedTag || editingPart) && view === 'HANGAR' && <PartForm tag={selectedTag || editingPart!.tagColor} initialData={editingPart || undefined} onSubmit={(data) => { setPendingPartData(data); setShowLocationPopup(true); }} onCancel={() => { setSelectedTag(null); setEditingPart(null); setView('INVENTORY'); }} t={t} />}
+            {view === 'INVENTORY' && <InventoryTable inventory={inventory} setInventory={saveInventory} onEdit={(part) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
+            {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement t={t} token={token!} addToast={addToast} />}
+            {view === 'SETTINGS' && user.role === UserRole.ADMIN && <Settings token={token!} addToast={addToast} />}
+            {view === 'SCAN' && <ScanPage recordId={scanRecordId || undefined} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
+            {view === 'QR_LABELS' && user.role === UserRole.ADMIN && <LocationQRGenerator t={t} onClose={() => setView('INVENTORY')} />}
+            {view === 'REPORTS' && <ReportsModule inventory={inventory} token={token!} t={t} />}
+          </Suspense>
         </div>
       </main>
 
-      {showLocationPopup && <LocationPopup onConfirm={confirmLocation} onCancel={() => setShowLocationPopup(false)} t={t} initialLocation={editingPart?.location} />}
+      {showLocationPopup && <Suspense fallback={null}><LocationPopup onConfirm={confirmLocation} onCancel={() => setShowLocationPopup(false)} t={t} initialLocation={editingPart?.location} /></Suspense>}
     </div>
   );
 };

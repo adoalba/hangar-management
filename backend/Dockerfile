@@ -16,8 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalación de dependencias de Python
+
+# Inyectar fecha de construcción como etiqueta para trazabilidad
+ARG BUILD_DATE
+LABEL org.opencontainers.image.created=$BUILD_DATE
+LABEL org.opencontainers.image.title="Hangar Management API"
+LABEL org.opencontainers.image.description="Backend API for Aviation Inventory System"
+
+# Copia de requirements primero para aprovechar caché de Docker
 COPY requirements.txt .
+
+# Instalación de dependencias con optimización de caché
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia del código fuente y scripts

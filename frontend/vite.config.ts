@@ -10,8 +10,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    host: '0.0.0.0', 
+    host: '0.0.0.0',
     strictPort: false,
+    watch: {
+      usePolling: true,
+    },
     proxy: {
       // Regla única y robusta que redirige todas las llamadas /api al backend
       '/api': {
@@ -22,10 +25,19 @@ export default defineConfig({
     }
   },
   build: {
+    cssMinify: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'lucide-react', 'recharts'],
+          vendor: ['react', 'react-dom'],
+          ui: ['lucide-react'],
+          charts: ['recharts'],
         },
       },
     },

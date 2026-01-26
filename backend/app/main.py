@@ -15,11 +15,12 @@ import json
 from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import func, text
-from google.generativeai import GenerativeModel, configure
+
 import re
 
-from .models import SessionLocal, User, UserSession, AviationPart
+from .models import SessionLocal, User, UserSession, AviationPart, Contact
 from . import server_email # Módulo de envío de correo
+from .reports import reports_bp  # Módulo de reportes granulares
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -51,18 +52,14 @@ try:
 except Exception:
     logger.warning("No se pudo inicializar el log en archivo, solo consola disponible.")
 
-try:
-    configure(api_key=os.environ.get("API_KEY"))
-    GEMINI_MODEL = GenerativeModel('gemini-1.5-flash-latest')
-    logger.info("✅ Gemini AI SDK configurado correctamente.")
-except Exception as e:
-    GEMINI_MODEL = None
-    logger.error(f"❌ Error al configurar Gemini AI SDK: {e}")
 
 # --- APP SETUP ---
 app = Flask(__name__)
 CORS(app)
 Compress(app)
+
+# Register Blueprints
+app.register_blueprint(reports_bp)
 
 limiter = Limiter(
     get_remote_address,
@@ -194,6 +191,183 @@ def update_password():
         return jsonify({"message": "Contraseña actualizada."})
     
     return jsonify({"message": "Usuario no encontrado"}), 404
+
+
+@app.route('/api/forgot-password', methods=['POST'])
+def forgot_password():
+    """
+    Request password reset - sends email with reset token.
+    No authentication required.
+    """
+    data = request.json
+    email = data.get('email', '').lower().strip()
+    
+    if not email:
+        return jsonify({"message": "Email requerido"}), 400
+    
+    db = get_db()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
+    
+    # Always return success to prevent email enumeration
+    if not user:
+        return jsonify({"message": "Si el correo está registrado, recibirás instrucciones de recuperación."})
+    
+    # Generate reset token (expires in 1 hour)
+    reset_token = secrets.token_urlsafe(32)
+    user.setup_token = reset_token
+    user.setup_token_expiry = datetime.utcnow() + timedelta(hours=1)
+    db.commit()
+    
+    # Build reset URL
+    base_url = request.host_url.rstrip('/')
+    reset_url = f"{base_url}/#/reset-password?token={reset_token}"
+    
+    # Send email
+    email_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: white; padding: 40px; border-radius: 16px;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+            <h1 style="margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 1px;">WORLD CLASS AVIATION</h1>
+            <p style="margin: 5px 0 0 0; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px;">Password Recovery</p>
+        </div>
+        
+        <p style="font-size: 14px; color: #cbd5e1;">Hola <b>{user.name}</b>,</p>
+        <p style="font-size: 14px; color: #cbd5e1;">Has solicitado restablecer tu contraseña. Haz clic en el siguiente botón para crear una nueva:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{reset_url}" style="display: inline-block; background: #6366f1; color: white; padding: 16px 32px; text-decoration: none; font-weight: 900; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; border-radius: 12px;">
+                RESTABLECER CONTRASEÑA
+            </a>
+        </div>
+        
+        <p style="font-size: 12px; color: #94a3b8;">Este enlace expirará en <b>1 hora</b>.</p>
+        <p style="font-size: 12px; color: #94a3b8;">Si no solicitaste este cambio, ignora este correo.</p>
+        
+        <div style="border-top: 1px solid #334155; margin-top: 30px; padding-top: 20px;">
+            <p style="font-size: 10px; color: #64748b; text-align: center; margin: 0;">
+                Aviation Inventory Management System • {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC
+            </p>
+        </div>
+    </div>
+    """
+    
+    try:
+        success, message, _ = server_email.send_email(
+            to_email=user.email,
+            subject="[WCA] Recuperación de Contraseña",
+            body=email_body
+        )
+        logger.info(f"Password reset email sent to {user.email}")
+    except Exception as e:
+        logger.error(f"Failed to send password reset email: {e}")
+    
+    return jsonify({"message": "Si el correo está registrado, recibirás instrucciones de recuperación."})
+
+
+@app.route('/api/admin/reset-password/<user_id>', methods=['POST'])
+@token_required
+def admin_reset_password(user_id):
+    """
+    Admin endpoint to reset a user's password directly.
+    Requires ADMIN role.
+    """
+    db = get_db()
+    
+    # Verify admin privileges
+    admin = db.query(User).filter(User.id == request.user_id).first()
+    if not admin or admin.role != 'ADMIN':
+        return jsonify({"message": "Acceso denegado. Solo administradores."}), 403
+    
+    # Get target user
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        return jsonify({"message": "Usuario no encontrado"}), 404
+    
+    data = request.json
+    new_password = data.get('password')
+    
+    if not new_password or len(new_password) < 10:
+        return jsonify({"message": "La contraseña debe tener al menos 10 caracteres"}), 400
+    
+    # Update password
+    target_user.password = generate_password_hash(new_password)
+    target_user.must_change_password = True  # Force change on next login
+    db.commit()
+    
+    logger.info(f"Admin {admin.name} reset password for user {target_user.name}")
+    return jsonify({"message": f"Contraseña de {target_user.name} restablecida. Deberá cambiarla en su próximo inicio de sesión."})
+
+
+@app.route('/api/admin/resend-invitation/<user_id>', methods=['POST'])
+@token_required
+def admin_resend_invitation(user_id):
+    """
+    Admin endpoint to resend setup invitation email.
+    Requires ADMIN role.
+    """
+    db = get_db()
+    
+    # Verify admin privileges
+    admin = db.query(User).filter(User.id == request.user_id).first()
+    if not admin or admin.role != 'ADMIN':
+        return jsonify({"message": "Acceso denegado. Solo administradores."}), 403
+    
+    # Get target user
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        return jsonify({"message": "Usuario no encontrado"}), 404
+    
+    # Generate new setup token (expires in 7 days)
+    setup_token = secrets.token_urlsafe(32)
+    target_user.setup_token = setup_token
+    target_user.setup_token_expiry = datetime.utcnow() + timedelta(days=7)
+    target_user.must_change_password = True
+    db.commit()
+    
+    # Build setup URL
+    base_url = request.host_url.rstrip('/')
+    setup_url = f"{base_url}/#/setup-password?token={setup_token}"
+    
+    # Send invitation email
+    email_body = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: white; padding: 40px; border-radius: 16px;">
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+            <h1 style="margin: 0; font-size: 18px; font-weight: 900; letter-spacing: 1px;">WORLD CLASS AVIATION</h1>
+            <p style="margin: 5px 0 0 0; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px;">Account Setup</p>
+        </div>
+        
+        <p style="font-size: 14px; color: #cbd5e1;">Hola <b>{target_user.name}</b>,</p>
+        <p style="font-size: 14px; color: #cbd5e1;">Se ha reenviado tu invitación al sistema de inventario. Configura tu contraseña:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{setup_url}" style="display: inline-block; background: #6366f1; color: white; padding: 16px 32px; text-decoration: none; font-weight: 900; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; border-radius: 12px;">
+                CONFIGURAR MI ACCESO
+            </a>
+        </div>
+        
+        <p style="font-size: 12px; color: #94a3b8;">Este enlace expirará en <b>7 días</b>.</p>
+        
+        <div style="border-top: 1px solid #334155; margin-top: 30px; padding-top: 20px;">
+            <p style="font-size: 10px; color: #64748b; text-align: center; margin: 0;">
+                Aviation Inventory Management System • {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC
+            </p>
+        </div>
+    </div>
+    """
+    
+    try:
+        success, message, _ = server_email.send_email(
+            to_email=target_user.email,
+            subject="[WCA] Invitación de Acceso Reenviada",
+            body=email_body
+        )
+        if success:
+            logger.info(f"Admin {admin.name} resent invitation to {target_user.email}")
+            return jsonify({"message": f"Invitación reenviada a {target_user.email}"})
+        else:
+            return jsonify({"message": f"Error al enviar: {message}"}), 500
+    except Exception as e:
+        logger.error(f"Failed to send invitation: {e}")
+        return jsonify({"message": "Error al enviar la invitación"}), 500
 
 # --- ENDPOINTS DE INVENTARIO ---
 
@@ -542,21 +716,67 @@ def stock_lookup():
         "breakdown": dict(breakdown_query)
     })
 
-@app.route('/api/amm-lookup', methods=['GET'])
-@token_required
-def amm_lookup():
-    part_number = request.args.get('pn')
-    if not part_number: 
-        return jsonify({"error": "Part Number (pn) es requerido"}), 400
-    if not GEMINI_MODEL: 
-        return jsonify({"error": "El servicio de IA no está disponible"}), 503
-    try:
-        response = GEMINI_MODEL.generate_content(f"Encuentra el manual AMM o CMM para P/N: {part_number}", tools=[{"google_search": {}}])
-        sources = [{"uri": chunk.web.uri, "title": chunk.web.title} for chunk in response.candidates[0].grounding_metadata.grounding_attributions if hasattr(chunk, 'web')]
-        return jsonify({"summary": response.text, "sources": sources})
-    except Exception as e:
-        logger.error(f"Error en consulta a Gemini: {e}")
-        return jsonify({"error": "Fallo en la consulta al servicio de IA"}), 500
+# --- ENDPOINTS DE CONTACTOS ---
 
+@app.route('/api/contacts', methods=['GET'])
+@token_required
+def get_contacts():
+    db = get_db()
+    contacts = db.query(Contact).order_by(Contact.name).all()
+    return jsonify([{
+        "id": c.id,
+        "name": c.name,
+        "email": c.email,
+        "organization": c.organization,
+        "role": c.role
+    } for c in contacts])
+
+@app.route('/api/contacts', methods=['POST'])
+@token_required
+def create_contact():
+    data = request.json
+    db = get_db()
+    
+    # Validation
+    if not data.get('email') or not data.get('name'):
+        return jsonify({"message": "Nombre y Email requeridos"}), 400
+
+    # duplicados check
+    email = data.get('email').lower().strip()
+    if db.query(Contact).filter(func.lower(Contact.email) == email).first():
+        return jsonify({"message": "Este correo ya está registrado en contactos"}), 409
+
+    new_contact = Contact(
+        id=str(uuid.uuid4()),
+        name=data.get('name'),
+        email=email,
+        organization=data.get('organization', ''),
+        role=data.get('role', 'EXTERNAL'),
+        created_at=datetime.utcnow()
+    )
+    db.add(new_contact)
+    db.commit()
+    
+    return jsonify({
+        "message": "Contacto guardado", 
+        "contact": {
+            "id": new_contact.id, 
+            "name": new_contact.name, 
+            "email": new_contact.email,
+            "role": new_contact.role
+        }
+    }), 201
+
+@app.route('/api/contacts/<contact_id>', methods=['DELETE'])
+@token_required
+def delete_contact(contact_id):
+    db = get_db()
+    contact = db.query(Contact).filter(Contact.id == contact_id).first()
+    if not contact:
+        return jsonify({"message": "Contacto no encontrado"}), 404
+    
+    db.delete(contact)
+    db.commit()
+    return jsonify({"message": "Contacto eliminado"}), 200
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

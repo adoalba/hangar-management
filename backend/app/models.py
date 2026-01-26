@@ -1,6 +1,6 @@
 
 import os
-from sqlalchemy import create_engine, Column, String, Boolean, Text, JSON, DateTime
+from sqlalchemy import create_engine, Column, String, Boolean, Text, JSON, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -79,3 +79,62 @@ class AviationPart(Base):
     observations = Column(Text)
 
     history = Column(JSON)
+
+
+class ReportLog(Base):
+    """
+    Audit trail for report acknowledgments.
+    Once created, these records are READ-ONLY for compliance.
+    """
+    __tablename__ = "report_logs"
+    
+    id = Column(String, primary_key=True)
+    report_id = Column(String, index=True, nullable=False)  # RPT-YYYYMMDD-XXXXXX
+    report_type = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), index=True, nullable=False)
+    user_name = Column(String, nullable=False)
+    acknowledge_timestamp = Column(DateTime, nullable=False)
+    device_fingerprint = Column(String)  # User-Agent + IP hash
+    recipient_email = Column(String)
+    item_count = Column(String)  # Number of items in report
+    filters_applied = Column(JSON)  # Stored filters for traceability
+    status = Column(String, default='ACKNOWLEDGED')  # ACKNOWLEDGED, PENDING
+    created_at = Column(DateTime, nullable=False)
+
+
+class ReportApprovalToken(Base):
+    """
+    Temporary tokens for report approval via email link.
+    Tokens expire after 7 days for security.
+    """
+    __tablename__ = "report_approval_tokens"
+    
+    token = Column(String, primary_key=True)  # UUID-based unique token
+    report_id = Column(String, index=True, nullable=False)
+    report_type = Column(String, nullable=False)
+    report_data = Column(JSON)  # Snapshot of report at time of email
+    recipient_email = Column(String, nullable=False)
+    sent_by_user_id = Column(String, nullable=False)
+    sent_by_user_name = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    acknowledged = Column(Boolean, default=False)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by_user_id = Column(String, nullable=True)
+    acknowledged_by_user_name = Column(String, nullable=True)
+    device_fingerprint = Column(String, nullable=True)
+
+
+class Contact(Base):
+    """
+    Directory of frequent contacts for report dispatch.
+    """
+    __tablename__ = "contacts"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    organization = Column(String)
+    role = Column(String) # E.g. 'Quality Manager', 'External', etc.
+    created_at = Column(DateTime, nullable=False)
+

@@ -5,81 +5,6 @@ import { AviationPart, TagColor } from '../types';
 import { ICONS, TRANSLATIONS, BILINGUAL_LABELS } from '../constants';
 import PrintTemplate from './PrintTemplate';
 
-interface AmmData {
-  summary: string;
-  sources: { uri: string; title: string }[];
-}
-
-const MaintenanceIntelligence: React.FC<{ part: AviationPart; t: any }> = ({ part, t }) => {
-  const [ammData, setAmmData] = useState<AmmData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchAmm = async () => {
-      setIsLoading(true);
-      setError(null);
-      const token = localStorage.getItem('session_token');
-      try {
-        const res = await fetch(`/api/amm-lookup?pn=${part.pn}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || 'Error del servidor de IA');
-        }
-        const data = await res.json();
-        setAmmData(data);
-      } catch (e: any) {
-        setError(e.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAmm();
-  }, [part.pn]);
-
-  return (
-    <div className="mt-8 p-8 bg-slate-950/50 border border-slate-800 rounded-[2.5rem]">
-      <h3 className="text-sm font-black text-indigo-400 uppercase tracking-widest flex items-center gap-3 mb-6">
-        <ICONS.BrainCircuit size={20} />
-        {t.language === 'ES' ? 'Inteligencia de Mantenimiento (AMM/CMM)' : 'Maintenance Intelligence (AMM/CMM)'}
-      </h3>
-      {isLoading ? (
-        <div className="flex items-center gap-4">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-bold text-slate-500 uppercase">{t.language === 'ES' ? 'Consultando Archivos Técnicos Globales...' : 'Querying Global Technical Archives...'}</p>
-        </div>
-      ) : error ? (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold rounded-xl flex items-center gap-2">
-          <ICONS.AlertTriangle size={16} /> {error}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="text-sm text-slate-300 leading-relaxed font-medium space-y-3 whitespace-pre-wrap">{ammData?.summary}</div>
-          <div className="space-y-3">
-            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fuentes Verificadas / Verified Sources</h4>
-            <div className="max-h-[150px] overflow-y-auto space-y-2 custom-scrollbar pr-2">
-              {ammData?.sources.map((source, i) => (
-                <a 
-                  key={i} 
-                  href={source.uri} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block p-3 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-800 hover:border-indigo-500 transition-all group"
-                >
-                  <p className="text-xs font-bold text-indigo-400 truncate group-hover:underline">{source.title}</p>
-                  <p className="text-[9px] text-slate-500 truncate">{source.uri}</p>
-                </a>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
 
 interface PartDetailModalProps {
   part: AviationPart;
@@ -98,7 +23,7 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
   );
 
   const getTagColorClass = (tag: TagColor) => {
-    switch(tag) {
+    switch (tag) {
       case TagColor.YELLOW: return 'border-yellow-500 text-yellow-500';
       case TagColor.GREEN: return 'border-emerald-500 text-emerald-500';
       case TagColor.WHITE: return 'border-slate-300 text-slate-300';
@@ -122,7 +47,7 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md">
       <div className={`w-full max-w-5xl bg-slate-900 border-2 rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300 max-h-[95vh] flex flex-col ${getTagColorClass(part.tagColor)}`}>
-        
+
         <div className="p-6 md:p-8 bg-slate-900 flex justify-between items-center border-b border-slate-800">
           <div className="flex items-center gap-6">
             <div className={`px-4 py-2 rounded-xl border font-black text-xs uppercase tracking-widest ${getTagColorClass(part.tagColor)} bg-black/20`}>
@@ -135,8 +60,8 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
               </div>
               <div className="h-10 w-px bg-slate-800 mx-2" />
               <div className="bg-indigo-600/10 border border-indigo-500/20 px-5 py-2.5 rounded-2xl text-center">
-                 <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{BILINGUAL_LABELS.location}</p>
-                 <p className="text-sm font-black text-indigo-400 uppercase tracking-tight">{part.location}</p>
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{BILINGUAL_LABELS.location}</p>
+                <p className="text-sm font-black text-indigo-400 uppercase tracking-tight">{part.location}</p>
               </div>
             </div>
           </div>
@@ -146,9 +71,9 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 custom-scrollbar">
-          
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-            
+
             <div className="lg:col-span-4 space-y-6">
               <div className="aspect-square bg-black rounded-[2rem] border border-slate-800 overflow-hidden shadow-inner group relative">
                 {part.photo ? (
@@ -167,10 +92,10 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
                   DATOS DE REGISTRO / RECORD INFO
                 </h4>
                 <div className="space-y-3">
-                   <DataField label={BILINGUAL_LABELS.date} value={part.registrationDate ? new Date(part.registrationDate).toLocaleDateString() : 'N/A'} highlight />
-                   <DataField label={BILINGUAL_LABELS.organization} value={part.organization || "World Class Aviation"} />
-                   <DataField label={BILINGUAL_LABELS.phone} value={part.companyPhone} />
-                   <DataField label={BILINGUAL_LABELS.email} value={part.companyEmail} />
+                  <DataField label={BILINGUAL_LABELS.date} value={part.registrationDate ? new Date(part.registrationDate).toLocaleDateString() : 'N/A'} highlight />
+                  <DataField label={BILINGUAL_LABELS.organization} value={part.organization || "World Class Aviation"} />
+                  <DataField label={BILINGUAL_LABELS.phone} value={part.companyPhone} />
+                  <DataField label={BILINGUAL_LABELS.email} value={part.companyEmail} />
                 </div>
               </div>
             </div>
@@ -200,8 +125,8 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
               </div>
             </div>
           </div>
-          
-          <MaintenanceIntelligence part={part} t={t} />
+
+
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6 border-t border-slate-800">
             <div className="space-y-4">
@@ -233,7 +158,7 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
             <button onClick={onClose} className="flex-1 md:flex-none px-8 py-4 bg-slate-800 hover:bg-slate-750 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">
               {t.cancel || "Cerrar / Close"}
             </button>
-            <button 
+            <button
               onClick={handlePrint}
               className="flex-1 md:flex-none flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest px-8 py-4 rounded-2xl shadow-xl shadow-indigo-600/20 transform active:scale-95 transition-all"
             >

@@ -31,7 +31,9 @@ def load_config():
         "resend_from": "operaciones@aerologistics.com"
     }
 
-def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, attachments=None):
+from email.mime.application import MIMEApplication
+
+def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, attachments=None, files=None):
     """
     Envía un correo electrónico utilizando SMTP con soporte para SSL/STARTTLS.
     
@@ -41,8 +43,10 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
         subject: Asunto del email
         html_body: Cuerpo HTML del email
         diagnostic_logs: Lista opcional para logs de diagnóstico
-        attachments: Dict opcional con CID como clave y datos base64 de imagen como valor
-                     Ejemplo: {'tech_signature': 'data:image/png;base64,iVBORw0KG...'}
+        attachments: Dict opcional con CID como clave y datos base64 de imagen como valor (imágenes inline)
+                     Ejemplo: {'tech_signature': 'data:image/png;base64,...'}
+        files: Lista opcional de archivos adjuntos. Cada elemento debe ser un dict:
+               {'filename': 'nombre.pdf', 'content': bytes, 'mimetype': 'application/pdf'}
     """
     def log(msg):
         logger.info(msg)
@@ -60,18 +64,19 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
             if not server_addr or not user or not password:
                 return False, "Configuración SMTP incompleta (servidor, usuario o clave faltantes)."
 
-            # Si hay attachments, usar MIMEMultipart para soportar imágenes embebidas
-            if attachments and len(attachments) > 0:
-                msg = MIMEMultipart('related')
-                msg['Subject'] = subject
-                msg['From'] = user
-                msg['To'] = recipient
-                
-                # Agregar el cuerpo HTML
-                msg_html = MIMEText(html_body, 'html')
-                msg.attach(msg_html)
-                
-                # Agregar imágenes con CID
+            # Crear estructura multipart/mixed para soportar adjuntos + contenido relacionado (HTML+Imágenes)
+            msg = MIMEMultipart('mixed')
+            msg['Subject'] = subject
+            msg['From'] = user
+            msg['To'] = recipient
+
+            # Parte 'related' para HTML e imágenes embebidas (inline)
+            msg_related = MIMEMultipart('related')
+            msg_html = MIMEText(html_body, 'html')
+            msg_related.attach(msg_html)
+
+            # Procesar imágenes inline (attachments por CID)
+            if attachments:
                 for cid, image_data in attachments.items():
                     try:
                         # Extraer el base64 del data URL si es necesario
@@ -86,19 +91,30 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
                         img = MIMEImage(img_bytes)
                         img.add_header('Content-ID', f'<{cid}>')
                         img.add_header('Content-Disposition', 'inline', filename=f'{cid}.png')
-                        msg.attach(img)
+                        msg_related.attach(img)
                         
                         log(f"Imagen embebida: {cid}")
                     except Exception as e:
                         log(f"Error procesando imagen {cid}: {e}")
-            else:
-                # Sin attachments, usar EmailMessage simple
-                msg = EmailMessage()
-                msg['Subject'] = subject
-                msg['From'] = user
-                msg['To'] = recipient
-                msg.set_content("AeroLogistics Pro - Requiere cliente con soporte HTML.")
-                msg.add_alternative(html_body, subtype='html')
+
+            # Adjuntar la parte 'related' al mensaje principal
+            msg.attach(msg_related)
+
+            # Procesar archivos adjuntos (files)
+            if files:
+                for f in files:
+                    try:
+                        filename = f.get('filename', 'adjunto')
+                        content = f.get('content')
+                        # mimetype = f.get('mimetype', 'application/octet-stream') # MIMEApplication detecta o es genérico
+
+                        if content:
+                            part = MIMEApplication(content, Name=filename)
+                            part['Content-Disposition'] = f'attachment; filename="{filename}"'
+                            msg.attach(part)
+                            log(f"Archivo adjuntado: {filename}")
+                    except Exception as e:
+                        log(f"Error adjuntando archivo {f.get('filename')}: {e}")
 
             context = ssl.create_default_context()
             

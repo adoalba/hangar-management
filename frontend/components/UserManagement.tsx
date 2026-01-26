@@ -226,7 +226,35 @@ const UserManagement: React.FC<{ t: any; token: string; addToast: (msg: string, 
                 </td>
                 <td className="p-4"><span className={`px-3 py-1 text-[9px] font-black uppercase rounded-full ${user.suspended ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'}`}>{user.suspended ? 'Suspendido' : 'Activo'}</span></td>
                 <td className="p-4 text-right">
-                  <div className="flex gap-2 justify-end">
+                  <div className="flex gap-1 justify-end flex-wrap">
+                    <button
+                      onClick={() => {
+                        const newPass = prompt('Nueva contraseña (mínimo 10 caracteres):');
+                        if (newPass && newPass.length >= 10) {
+                          fetch(`/api/admin/reset-password/${user.id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ password: newPass })
+                          }).then(r => r.json()).then(d => addToast(d.message, 'success')).catch(() => addToast('Error', 'error'));
+                        } else if (newPass) { addToast('Mínimo 10 caracteres', 'error'); }
+                      }}
+                      className="p-2 hover:bg-amber-500/20 rounded-lg"
+                      title="Cambiar Contraseña"
+                    >
+                      <ICONS.Key size={16} className="text-amber-400" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        fetch(`/api/admin/resend-invitation/${user.id}`, {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${token}` }
+                        }).then(r => r.json()).then(d => addToast(d.message, 'success')).catch(() => addToast('Error de red', 'error'));
+                      }}
+                      className="p-2 hover:bg-indigo-500/20 rounded-lg"
+                      title="Reenviar Invitación"
+                    >
+                      <ICONS.Mail size={16} className="text-indigo-400" />
+                    </button>
                     <button onClick={() => toggleSuspension(user)} className="p-2 hover:bg-slate-700 rounded-lg" title={user.suspended ? 'Activar' : 'Suspender'}>{user.suspended ? <ICONS.UserCheck size={16} /> : <ICONS.UserX size={16} />}</button>
                     <button onClick={() => openEditForm(user)} className="p-2 hover:bg-slate-700 rounded-lg" title="Editar"><ICONS.Edit size={16} /></button>
                     <button onClick={() => setConfirmDelete(user)} className="p-2 text-slate-600 hover:text-rose-500 rounded-lg" title="Eliminar"><ICONS.Trash size={16} /></button>

@@ -1,27 +1,60 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* ESTRATEGIA DE COLOR: NOCHE INDUSTRIAL (High Contrast) */
+  --brand-bg: #0F172A;
+  /* Slate 900 */
+  --brand-surface: #1E293B;
+  /* Slate 800 */
+  --brand-primary: #3B82F6;
+  /* Azul Acero */
+  --brand-text: #F8FAFC;
+  /* Slate 50 */
+  --input-bg: #1E293B;
+  /* Dark Input Bg */
+  --input-border: #3B82F6;
+  /* Steel Blue Border */
+}
+
 body {
-  @apply bg-slate-900 text-slate-50;
+  @apply bg-brand-bg text-brand-text;
   font-family: 'Inter', sans-serif;
   margin: 0;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
+
+/* Touch Target Optimization for Mobile/Tablet */
+button,
+a {
+  @apply min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0;
+  touch-action: manipulation;
+}
+
+/* BLINDAJE DE INPUTS (Dark Mode Edition) */
+input,
+textarea,
+select {
+  @apply min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 bg-brand-surface text-white border border-brand-primary/50 placeholder:text-slate-500 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary rounded-lg px-3 transition-colors;
+  touch-action: manipulation;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: #0f172a;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #1e293b;
   border-radius: 10px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
@@ -32,16 +65,21 @@ body {
     size: A4 portrait;
     margin: 0;
   }
-  html, body {
+
+  html,
+  body {
     height: 100%;
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
     color: black !important;
   }
-  #root, .no-print {
+
+  #root,
+  .no-print {
     display: none !important;
   }
+
   #print-section {
     display: block !important;
     position: absolute;
@@ -50,12 +88,16 @@ body {
     width: 100%;
     height: 100%;
   }
+
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 }
-#print-section { display: none; }
+
+#print-section {
+  display: none;
+}
 
 /* Prevención de scroll en pads de firma */
 .touch-none {

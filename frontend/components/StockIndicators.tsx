@@ -71,22 +71,22 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
 
             {/* KPI 1: Total Stock Volume */}
-            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Operational Volume</h3>
+            <div className="bg-brand-surface p-4 rounded-lg border border-slate-700 shadow-sm flex flex-col justify-between">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Operational Volume</h2>
                 <div className="flex items-baseline mt-2">
-                    <span className="text-4xl font-black text-slate-900 tracking-tight">{stats.totalItems}</span>
-                    <span className="ml-2 text-xs font-semibold text-slate-500 uppercase">Units Listed</span>
+                    <span className="text-4xl font-black text-white tracking-tight">{stats.totalItems}</span>
+                    <span className="ml-2 text-xs font-semibold text-slate-400 uppercase">Units Listed</span>
                 </div>
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                    <div className="text-[10px] text-slate-400 font-mono">
+                <div className="mt-3 pt-3 border-t border-slate-700">
+                    <div className="text-[10px] text-slate-500 font-mono">
                         FILTER MATCH / SYSTEM TOTAL
                     </div>
                 </div>
             </div>
 
             {/* KPI 2: Airworthiness Status (Compliance) */}
-            <div className="col-span-1 md:col-span-2 bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Airworthiness Status Compliance</h3>
+            <div className="col-span-1 md:col-span-2 bg-brand-surface p-4 rounded-lg border border-slate-700 shadow-sm">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Airworthiness Status Compliance</h2>
                 <div className="grid grid-cols-4 gap-2">
                     {Object.values(TagColor).map((color) => (
                         <div key={color} className={`flex flex-col items-center justify-center p-2 rounded border ${getBadgeColor(color)}`}>
@@ -98,8 +98,8 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
             </div>
 
             {/* KPI 3: Top Locations / Logistics */}
-            <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Logistics Distribution</h3>
+            <div className="bg-brand-surface p-4 rounded-lg border border-slate-700 shadow-sm">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Logistics Distribution</h2>
                 <div className="space-y-2">
                     {Object.entries(stats.locationCounts)
                         .sort(([, a], [, b]) => b - a)
@@ -107,10 +107,10 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
                         .map(([loc, count], idx) => (
                             <div key={loc} className="flex justify-between items-center text-sm">
                                 <div className="flex items-center">
-                                    <span className="w-4 text-[10px] font-mono text-slate-400 mr-2">{idx + 1}.</span>
-                                    <span className="font-semibold text-slate-700 truncate max-w-[100px]" title={loc}>{loc}</span>
+                                    <span className="w-4 text-[10px] font-mono text-slate-500 mr-2">{idx + 1}.</span>
+                                    <span className="font-semibold text-slate-300 truncate max-w-[100px]" title={loc}>{loc}</span>
                                 </div>
-                                <span className="font-mono font-bold text-slate-900">{count}</span>
+                                <span className="font-mono font-bold text-brand-primary">{count}</span>
                             </div>
                         ))}
                 </div>
