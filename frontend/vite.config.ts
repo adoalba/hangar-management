@@ -18,7 +18,7 @@ export default defineConfig({
     proxy: {
       // Regla única y robusta que redirige todas las llamadas /api al backend
       '/api': {
-        target: 'http://127.0.0.1:5000',
+        target: 'http://backend:5000',
         changeOrigin: true,
         secure: false,
       }
