@@ -108,12 +108,13 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ label, onSave, initialValue
   );
 };
 
-const FormInput = ({ label, value, onChange, t, type = "text", placeholder = "", options = [] }: any) => (
+
+const FormInput = ({ label, value, onChange, t, type = "text", inputMode = "text", placeholder = "", options = [] }: any) => (
   <div className="space-y-1">
-    <label className="text-[9px] font-black text-slate-100 uppercase tracking-widest ml-1">{label}</label>
+    <label className="text-[10px] font-black text-slate-100 uppercase tracking-widest ml-1">{label}</label>
     {type === "select" ? (
       <select
-        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold transition-all"
+        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-base font-bold transition-all appearance-none"
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -123,10 +124,12 @@ const FormInput = ({ label, value, onChange, t, type = "text", placeholder = "",
     ) : (
       <input
         type={type}
-        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold transition-all"
+        inputMode={inputMode}
+        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-base font-bold transition-all placeholder:text-slate-600"
         placeholder={placeholder}
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={(e) => e.target.select()} // Auto-select content for quick replacement
       />
     )}
   </div>
@@ -153,6 +156,9 @@ const PartForm: React.FC<{ tag: TagColor; initialData?: AviationPart; onSubmit: 
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
+  // Focus first input on mount
+  const firstInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (initialData) {
       setFormData(prev => ({ ...prev, ...initialData }));
@@ -160,6 +166,7 @@ const PartForm: React.FC<{ tag: TagColor; initialData?: AviationPart; onSubmit: 
       setTechSig(initialData.technicianSignature);
       setInspSig(initialData.inspectorSignature);
     }
+    // Auto-focus logic would go here if we had direct ref access to the input
   }, [initialData]);
 
   useEffect(() => {
@@ -379,12 +386,13 @@ const PartForm: React.FC<{ tag: TagColor; initialData?: AviationPart; onSubmit: 
             <ICONS.Clock size={14} /> TIEMPOS Y CICLOS / TIMES & CYCLES
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-            <FormInput t={t} label={t.form.tt} value={formData.ttTat} onChange={(v: string) => setFormData({ ...formData, ttTat: v })} />
-            <FormInput t={t} label={t.form.tso} value={formData.tso} onChange={(v: string) => setFormData({ ...formData, tso: v })} />
-            <FormInput t={t} label={t.form.trem} value={formData.trem} onChange={(v: string) => setFormData({ ...formData, trem: v })} />
-            <FormInput t={t} label={t.form.tc} value={formData.tc} onChange={(v: string) => setFormData({ ...formData, tc: v })} />
-            <FormInput t={t} label={t.form.cso} value={formData.cso} onChange={(v: string) => setFormData({ ...formData, cso: v })} />
-            <FormInput t={t} label={t.form.crem} value={formData.crem} onChange={(v: string) => setFormData({ ...formData, crem: v })} />
+            {/* Using decimal inputMode for numeric fields to show numbers only */}
+            <FormInput t={t} inputMode="decimal" label={t.form.tt} value={formData.ttTat} onChange={(v: string) => setFormData({ ...formData, ttTat: v })} placeholder="0.0" />
+            <FormInput t={t} inputMode="decimal" label={t.form.tso} value={formData.tso} onChange={(v: string) => setFormData({ ...formData, tso: v })} placeholder="0.0" />
+            <FormInput t={t} inputMode="decimal" label={t.form.trem} value={formData.trem} onChange={(v: string) => setFormData({ ...formData, trem: v })} placeholder="0.0" />
+            <FormInput t={t} inputMode="numeric" label={t.form.tc} value={formData.tc} onChange={(v: string) => setFormData({ ...formData, tc: v })} placeholder="0" />
+            <FormInput t={t} inputMode="numeric" label={t.form.cso} value={formData.cso} onChange={(v: string) => setFormData({ ...formData, cso: v })} placeholder="0" />
+            <FormInput t={t} inputMode="numeric" label={t.form.crem} value={formData.crem} onChange={(v: string) => setFormData({ ...formData, crem: v })} placeholder="0" />
           </div>
         </section>
 

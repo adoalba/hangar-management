@@ -1,5 +1,8 @@
-const CACHE_NAME = 'wca-inventory-v1';
-const STATIC_ASSETS = [
+const CACHE_NAME = 'wca-pro-v3-industrial';
+const ASSETS_CACHE = 'wca-assets-v3';
+
+// Core assets to cache immediately
+const PRECACHE_URLS = [
     '/',
     '/index.html',
     '/index.css',
@@ -9,60 +12,67 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            console.log('[Service Worker] Caching app shell');
-            return cache.addAll(STATIC_ASSETS);
-        })
-    );
+    // Force activation meant for immediate takeover
     self.skipWaiting();
+    event.waitUntil(
+        caches.open(ASSETS_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
+    );
 });
 
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((keyList) => {
-            return Promise.all(
-                keyList.map((key) => {
-                    if (key !== CACHE_NAME) {
-                        console.log('[Service Worker] Removing old cache', key);
-                        return caches.delete(key);
-                    }
-                })
-            );
-        })
+        caches.keys().then((keys) => Promise.all(
+            keys.map((key) => {
+                if (key !== CACHE_NAME && key !== ASSETS_CACHE) {
+                    console.log('[SW] Purgando caché antiguo:', key);
+                    return caches.delete(key);
+                }
+            })
+        ))
     );
+    // Claim clients immediately so the first load is controlled
     self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // API Strategy: Network First
+    // 1. API: Network Only (Critico para tiempo real)
     if (url.pathname.startsWith('/api/')) {
+        return;
+    }
+
+    // 2. Navigation (HTML): Network First => Cache
+    // Ensures fresh content on reload, fallback to offline cache
+    if (event.request.mode === 'navigate') {
         event.respondWith(
             fetch(event.request)
-                .then((response) => {
-                    return response;
-                })
                 .catch(() => {
-                    // Offline Fallback for API
-                    return new Response(JSON.stringify({ error: 'Offline mode' }), {
-                        headers: { 'Content-Type': 'application/json' }
-                    });
+                    return caches.match('/index.html') || caches.match(event.request);
                 })
         );
         return;
     }
 
-    // Static Assets Strategy: Cache First, Network Fallback
+    // 3. Assets: Stale-While-Revalidate
+    // Return cache instantly, update in background
     event.respondWith(
-        caches.match(event.request).then((response) => {
-            return response || fetch(event.request).catch(() => {
-                // Navigation Fallback
-                if (event.request.mode === 'navigate') {
-                    return caches.match('/index.html');
+        caches.match(event.request).then((cachedResponse) => {
+            const fetchPromise = fetch(event.request).then((networkResponse) => {
+                // Update cache if valid response
+                if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+                    const responseClone = networkResponse.clone();
+                    caches.open(ASSETS_CACHE).then((cache) => {
+                        cache.put(event.request, responseClone);
+                    });
                 }
+                return networkResponse;
+            }).catch(() => {
+                // Network failed? No problem, we returned cache.
+                // If no cache and no network, it fails (but handled by offline fallback if needed)
             });
+
+            return cachedResponse || fetchPromise;
         })
     );
 });

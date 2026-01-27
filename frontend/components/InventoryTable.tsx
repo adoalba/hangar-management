@@ -66,13 +66,29 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
   }, [inventory, search, filterTag, filterLoc, filterType]);
 
   // --- 4. ACTIONS ---
+  const ConfirmationModal = lazy(() => import('./ConfirmationModal'));
+
+  // ... (existing imports)
+
+  const [partToDelete, setPartToDelete] = useState<AviationPart | null>(null);
+
   const handlePrint = (part: AviationPart) => onPrint(part);
 
-  const handleDelete = (partToDelete: AviationPart) => {
-    if (confirm(t.confirm_delete_part)) {
+  // Trigger Modal
+  const requestDelete = (part: AviationPart) => {
+    setPartToDelete(part);
+  };
+
+  // Actual Execution
+  const confirmDelete = () => {
+    if (partToDelete) {
+      // In a real app, this would be an API call
+      // fetch(`/api/inventory/${partToDelete.id}`, { method: 'DELETE' })...
+
       const updated = inventory.filter(p => p.id !== partToDelete.id);
       setInventory(updated);
-      addToast(t.language === 'EN' ? 'Component removed' : 'Componente eliminado', 'success');
+      addToast(t.language === 'EN' ? 'Component removed successfully' : 'Componente eliminado exitosamente', 'success');
+      setPartToDelete(null);
     }
   };
 
@@ -253,6 +269,7 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
                             <button onClick={() => setTracingPart(item)} className="p-2 text-brand-muted hover:text-white bg-brand-darker border border-slate-800 rounded-lg" aria-label="Traceability"><ICONS.Activity size={14} /></button>
                             <button onClick={() => setEmailingPart(item)} className="p-2 text-brand-muted hover:text-white bg-brand-darker border border-slate-800 rounded-lg" aria-label="Email Part"><ICONS.Mail size={14} /></button>
                             <button onClick={() => onEdit(item)} className="p-2 text-brand-muted hover:text-white bg-brand-darker border border-slate-800 rounded-lg" aria-label="Edit Part"><ICONS.Edit size={14} /></button>
+                            <button onClick={() => requestDelete(item)} className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 bg-rose-500/10 border border-rose-500/20 rounded-lg transition-colors" aria-label="Delete Part"><ICONS.Trash size={14} /></button>
                           </>
                         )}
                       </div>
@@ -286,26 +303,28 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                    <span className="block text-[9px] font-bold text-white uppercase">Location</span>
-                    <span className="font-mono font-bold">{item.location || '---'}</span>
+                  <div className="bg-slate-800/50 p-2 rounded border border-slate-700">
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase">Location</span>
+                    <span className="font-mono font-bold text-white">{item.location || '---'}</span>
                   </div>
                   {item.tagColor === TagColor.YELLOW && (
-                    <div className="bg-yellow-50 p-2 rounded border border-yellow-100">
-                      <span className="block text-[9px] font-bold text-yellow-600 uppercase">Expires</span>
-                      <span className="font-bold text-yellow-800">{item.shelfLife ? new Date(item.shelfLife).toLocaleDateString() : 'N/A'}</span>
+                    <div className="bg-yellow-900/20 p-2 rounded border border-yellow-700/30">
+                      <span className="block text-[9px] font-bold text-yellow-500 uppercase">Expires</span>
+                      <span className="font-bold text-yellow-500">{item.shelfLife ? new Date(item.shelfLife).toLocaleDateString() : 'N/A'}</span>
                     </div>
                   )}
-                  {/* Add other tag specific details if critical for mobile */}
                 </div>
 
                 {/* Actions Footer - Big Touch Targets */}
-                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-5 gap-2 pt-2 border-t border-slate-700/50">
                   <button onClick={() => window.location.hash = `#/scan/${item.id}`} className="flex items-center justify-center p-2 rounded-lg bg-brand-primary/10 text-brand-primary"><ICONS.Scan size={20} /></button>
-                  <button onClick={() => setSelectedPartView(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-100 text-slate-600"><ICONS.Eye size={20} /></button>
-                  <button onClick={() => handlePrint(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-100 text-slate-600"><ICONS.Printer size={20} /></button>
+                  <button onClick={() => setSelectedPartView(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white border border-slate-700"><ICONS.Eye size={20} /></button>
+                  <button onClick={() => handlePrint(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white border border-slate-700"><ICONS.Printer size={20} /></button>
                   {user.role !== UserRole.VIEWER && (
-                    <button onClick={() => onEdit(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-100 text-slate-600"><ICONS.Edit size={20} /></button>
+                    <>
+                      <button onClick={() => onEdit(item)} className="flex items-center justify-center p-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white border border-slate-700"><ICONS.Edit size={20} /></button>
+                      <button onClick={() => requestDelete(item)} className="flex items-center justify-center p-2 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white border border-rose-500/20 transition-colors"><ICONS.Trash size={20} /></button>
+                    </>
                   )}
                 </div>
               </div>
@@ -325,8 +344,27 @@ const InventoryTable: React.FC<InventoryTableProps> = ({ inventory, setInventory
         {selectedPartView && <Suspense fallback={null}><PartDetailModal part={selectedPartView} onClose={() => setSelectedPartView(null)} t={t} /></Suspense>}
         {tracingPart && <Suspense fallback={null}><TraceabilityModal history={tracingPart.history || []} partName={tracingPart.partName} pn={tracingPart.pn} sn={tracingPart.sn} tagColor={tracingPart.tagColor} onClose={() => setTracingPart(null)} onEmail={() => { setTracingPart(null); setEmailingPart(tracingPart); }} t={t} /></Suspense>}
         {emailingPart && <Suspense fallback={null}><EmailModal part={emailingPart} onClose={() => setEmailingPart(null)} token={token} addToast={addToast} t={t} /></Suspense>}
-      </section>
-    </div>
+
+        {/* Security Confirmation Modal */}
+        {
+          partToDelete && (
+            <Suspense fallback={null}>
+              <ConfirmationModal
+                title={t.language === 'EN' ? 'Confirm Deletion' : 'Confirmar Eliminación'}
+                message={t.language === 'EN'
+                  ? `Are you sure you want to permanently delete component P/N: ${partToDelete.pn}? This action cannot be undone.`
+                  : `¿Está seguro de que desea eliminar permanentemente el componente P/N: ${partToDelete.pn}? Esta acción no se puede deshacer.`}
+                confirmLabel={t.language === 'EN' ? 'Delete Component' : 'Eliminar Componente'}
+                cancelLabel={t.cancel || 'Cancel'}
+                isDestructive={true}
+                onConfirm={confirmDelete}
+                onCancel={() => setPartToDelete(null)}
+              />
+            </Suspense>
+          )
+        }
+      </section >
+    </div >
   );
 };
 

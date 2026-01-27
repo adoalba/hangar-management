@@ -19,4 +19,10 @@ podman build --no-cache -f frontend/Dockerfile -t hangar_frontend_prod:latest ./
 echo "🚀 Starting Services..."
 podman-compose up -d
 
+# 4. REFRESH PROXY (CRITICAL FOR 502 GATEWAY ISSUES)
+# Nginx caches upstream IPs on startup. When frontend is recreated, its IP changes.
+# We MUST restart Nginx to resolve the new IP address.
+echo "🔄 Refreshing Proxy Configuration..."
+podman restart hangar_nginx
+
 echo "✅ DONE. Access at http://localhost:8080"

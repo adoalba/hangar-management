@@ -1,22 +1,30 @@
 {
     "name": "World Class Aviation Inventory",
     "short_name": "WCA Inventory",
+    "id": "/",
     "start_url": "/",
     "display": "standalone",
-    "orientation": "any",
-    "background_color": "#F8FAFC",
-    "theme_color": "#3B82F6",
-    "description": "Industrial Professional Hangar Management System",
+    "orientation": "landscape",
+    "background_color": "#020617",
+    "theme_color": "#020617",
+    "description": "Industrial Hangar Management System - Traceability & Logistics",
+    "categories": [
+        "productivity",
+        "utilities",
+        "business"
+    ],
     "icons": [
         {
             "src": "/icons/icon-192x192.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "/icons/icon-512x512.png",
             "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "/icons/icon-maskable-512x512.png",

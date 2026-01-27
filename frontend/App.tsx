@@ -8,13 +8,16 @@ const Login = lazy(() => import('./components/Login'));
 const Sidebar = lazy(() => import('./components/Sidebar'));
 const HangarMenu = lazy(() => import('./components/HangarMenu'));
 
+// Core Views (Critical Path)
+import InventoryTable from './components/InventoryTable';
+
 // Lazy Load Heavy Components for FCP optimization
 // Lazy Load Modals (Code Splitting)
 const PartDetailModal = lazy(() => import('./components/PartDetailModal'));
 const TraceabilityModal = lazy(() => import('./components/TraceabilityModal'));
 const EmailModal = lazy(() => import('./components/EmailModal'));
 const PartForm = lazy(() => import('./components/PartForm'));
-const InventoryTable = lazy(() => import('./components/InventoryTable'));
+// const InventoryTable = lazy(() => import('./components/InventoryTable')); // MOVED TO STATIC
 const LocationPopup = lazy(() => import('./components/LocationPopup'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const Settings = lazy(() => import('./components/Settings'));
@@ -133,27 +136,32 @@ const App: React.FC = () => {
     }
   }, [token, handleLogout]);
 
+  // Non-blocking background fetch for inventory
   useEffect(() => {
     if (user && token && !user.mustChangePassword) {
-      fetch('/api/inventory', { headers: { 'Authorization': `Bearer ${token}` } })
-        .then(res => {
-          if (res.ok) return res.json();
-          if (res.status === 401) handleLogout();
-          throw new Error("Unauthorized");
-        })
-        .then(data => {
-          if (Array.isArray(data)) {
-            setInventory(data);
-          } else {
-            console.error("Inventory API did not return an array:", data);
-            addToast("Error de datos del inventario.", "error");
+      // Small delay to prioritize First Paint
+      const timer = setTimeout(() => {
+        fetch('/api/inventory', { headers: { 'Authorization': `Bearer ${token}` } })
+          .then(res => {
+            if (res.ok) return res.json();
+            if (res.status === 401) handleLogout();
+            throw new Error("Unauthorized");
+          })
+          .then(data => {
+            if (Array.isArray(data)) {
+              setInventory(data);
+            } else {
+              console.error("Inventory API did not return an array:", data);
+              addToast("Error de datos del inventario.", "error");
+              setInventory([]);
+            }
+          })
+          .catch(() => {
+            addToast("Error de comunicación API.", "error");
             setInventory([]);
-          }
-        })
-        .catch(() => {
-          addToast("Error de comunicación API.", "error");
-          setInventory([]);
-        });
+          });
+      }, 50); // Defer by 50ms to allow UI to paint
+      return () => clearTimeout(timer);
     }
   }, [user, token, addToast, handleLogout]);
 
