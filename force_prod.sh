@@ -4,10 +4,25 @@ set -e
 echo "🔒 FORCE PRODUCTION DEPLOYMENT PROTOCOL"
 echo "======================================="
 
-# 1. CLEANUP
-echo "🧹 Cleaning old containers and images..."
-podman stop hangar_frontend || true
-podman rm hangar_frontend || true
+# 1. CLEANUP (AGGRESSIVE & FORCEFUL)
+echo "🧹 Cleaning old containers, pods and volumes..."
+
+# 1.0 Identify and Kill Pods containing our containers (Crucial for "dependent container" errors)
+# Get Pod IDs for any container with "hangar_" in the name
+POD_IDS=$(podman ps -a --filter name=hangar_ --format "{{.Pod}}" | sort -u | grep -v "^\s*$")
+if [ ! -z "$POD_IDS" ]; then
+    echo "💣 Nuking Pods: $POD_IDS"
+    echo "$POD_IDS" | xargs -r podman pod rm -f
+fi
+
+# 1.1 Stop/Kill individual containers if they survived
+podman ps -a --filter name=hangar_ --format "{{.ID}}" | xargs -r podman rm -f
+
+# 1.2 Down via compose to clean networks (just in case)
+podman-compose down || true
+podman volume prune -f || true
+
+# Remove old production image
 podman rmi hangar_frontend_prod:latest || true
 
 # 2. BUILD FRONTEND (EXPLICIT)
