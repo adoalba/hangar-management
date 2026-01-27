@@ -22,7 +22,7 @@ interface ReportFiltersProps {
 const STATUS_OPTIONS = [
     { value: TagColor.YELLOW, label: 'SERVICEABLE', color: 'bg-yellow-100 border-yellow-300 text-yellow-800' },
     { value: TagColor.GREEN, label: 'REPAIRABLE', color: 'bg-emerald-100 border-emerald-300 text-emerald-800' },
-    { value: TagColor.WHITE, label: 'REMOVED', color: 'bg-slate-100 border-slate-300 text-slate-800' },
+    { value: TagColor.WHITE, label: 'REMOVED', color: 'bg-slate-100 border-slate-300 text-white' },
     { value: TagColor.RED, label: 'REJECTED', color: 'bg-rose-100 border-rose-300 text-rose-800' },
 ];
 
@@ -85,7 +85,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                         <ICONS.Filter size={18} className="text-brand-primary" />
                     </div>
                     <div>
-                        <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                        <h2 className="text-xs font-black text-slate-100 uppercase tracking-widest">
                             {t.smart_filters || 'Filtros Inteligentes'}
                         </h2>
                         <p className="text-[10px] text-slate-600">
@@ -96,7 +96,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                 {hasFilters && (
                     <button
                         onClick={clearFilters}
-                        className="text-xs font-bold text-slate-500 hover:text-white flex items-center gap-1"
+                        className="text-xs font-bold text-slate-100 hover:text-white flex items-center gap-1"
                     >
                         <ICONS.X size={14} />
                         {t.clear || 'Limpiar'}
@@ -107,11 +107,11 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
             {/* P/N Search (conditional) */}
             {showPnSearch && (
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    <label className="text-[10px] font-bold text-white uppercase tracking-wider block mb-2">
                         {t.search_pn || 'Buscar Part Number'}
                     </label>
                     <div className="relative">
-                        <ICONS.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <ICONS.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-100" />
                         <input
                             type="text"
                             value={filters.pnSearch}
@@ -125,7 +125,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
 
             {/* Status Filters */}
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                <label className="text-[10px] font-bold text-white uppercase tracking-wider block mb-2">
                     {t.filter_status || 'Tipo de Tarjeta'}
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                                 onClick={() => toggleStatus(option.value)}
                                 className={`px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase transition-all ${isActive
                                     ? option.color
-                                    : 'bg-brand-surface-dark border-slate-700 text-slate-500 hover:border-slate-600'
+                                    : 'bg-brand-surface-dark border-slate-700 text-slate-100 hover:border-slate-600'
                                     }`}
                             >
                                 {option.label}
@@ -149,7 +149,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
 
             {/* Location Filters */}
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                <label className="text-[10px] font-bold text-white uppercase tracking-wider block mb-2">
                     {t.filter_location || 'Ubicación Física'}
                 </label>
                 {availableLocations.length > 0 ? (
@@ -162,7 +162,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                                     onClick={() => toggleLocation(loc)}
                                     className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase transition-all ${isActive
                                         ? 'bg-brand-primary border-brand-primary text-white'
-                                        : 'bg-brand-surface-dark border-slate-700 text-slate-400 hover:border-slate-600'
+                                        : 'bg-brand-surface-dark border-slate-700 text-white hover:border-slate-600'
                                         }`}
                                 >
                                     {loc}
@@ -171,7 +171,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
                         })}
                     </div>
                 ) : (
-                    <p className="text-xs text-slate-500 italic">{t.no_locations || 'No hay ubicaciones disponibles'}</p>
+                    <p className="text-xs text-slate-100 italic">{t.no_locations || 'No hay ubicaciones disponibles'}</p>
                 )}
             </div>
 
@@ -179,7 +179,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Date From */}
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    <label className="text-[10px] font-bold text-white uppercase tracking-wider block mb-2">
                         {t.date_from || 'Fecha Desde'}
                     </label>
                     <input
@@ -192,7 +192,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
 
                 {/* Date To */}
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                    <label className="text-[10px] font-bold text-white uppercase tracking-wider block mb-2">
                         {t.date_to || 'Fecha Hasta'}
                     </label>
                     <input
@@ -227,7 +227,7 @@ const ReportFilters: React.FC<ReportFiltersProps> = ({
             {hasFilters && (
                 <div className="pt-4 border-t border-slate-800">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase">
+                        <span className="text-[10px] font-bold text-slate-100 uppercase">
                             {t.active_filters || 'Filtros activos'}:
                         </span>
                         {filters.statuses.map(s => (

@@ -81,7 +81,7 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
       <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-2xl flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-black text-white uppercase tracking-tighter italic">Infraestructura y Mantenimiento</h2>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Terminal de Configuración Crítica</p>
+          <p className="text-white text-[10px] font-black uppercase tracking-[0.3em] mt-1">Terminal de Configuración Crítica</p>
         </div>
         <button
           type="button"
@@ -107,7 +107,7 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
             >
               <div className="text-left">
                 <p className="text-xs font-black text-white uppercase">Respaldar Datos</p>
-                <p className="text-[9px] text-slate-500 font-bold uppercase">Descargar snapshot JSON</p>
+                <p className="text-[9px] text-white font-bold uppercase">Descargar snapshot JSON</p>
               </div>
               <ICONS.Download className="text-slate-600 group-hover:text-indigo-400" size={20} />
             </button>
@@ -119,7 +119,7 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
             >
               <div className="text-left">
                 <p className="text-xs font-black text-white uppercase">Optimizar Stock</p>
-                <p className="text-[9px] text-slate-500 font-bold uppercase">Compactar historial y liberar RAM</p>
+                <p className="text-[9px] text-white font-bold uppercase">Compactar historial y liberar RAM</p>
               </div>
               {optimizing ? (
                 <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -138,7 +138,7 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
                 <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Servidor de Despacho (SMTP)</h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Email Corporativo</label>
+                    <label className="text-[9px] font-bold text-slate-100 uppercase tracking-widest">Email Corporativo</label>
                     <input
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-xs outline-none focus:border-indigo-500"
                       value={config.smtp_user}
@@ -158,8 +158,8 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
               </div>
 
               <div className="bg-slate-950 border border-slate-800 p-6 rounded-3xl space-y-4">
-                <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Terminal de Pruebas</h3>
-                <div className="h-32 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-1 custom-scrollbar">
+                <h3 className="text-[9px] font-black text-slate-100 uppercase tracking-widest">Terminal de Pruebas</h3>
+                <div className="h-32 overflow-y-auto font-mono text-[9px] text-white space-y-1 custom-scrollbar">
                   {logs.map((log, i) => <div key={i}>{'> '} {log}</div>)}
                   {logs.length === 0 && <div className="text-slate-800 tracking-tighter uppercase font-black">Esperando diagnóstico...</div>}
                 </div>
@@ -189,7 +189,7 @@ const Settings: React.FC<{ token: string; addToast: (msg: string, type?: 'succes
                       addToast("Error de conexión", "error");
                     }
                   }}
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all disabled:opacity-50"
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl text-[9px] font-black uppercase tracking-widest text-white hover:text-white transition-all disabled:opacity-50"
                 >
                   {status === 'testing' ? 'Analizando...' : 'Ejecutar Diagnóstico Real'}
                 </button>

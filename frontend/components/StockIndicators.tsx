@@ -72,13 +72,13 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
 
             {/* KPI 1: Total Stock Volume */}
             <div className="bg-brand-surface p-4 rounded-lg border border-slate-700 shadow-sm flex flex-col justify-between">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Operational Volume</h2>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Operational Volume</h2>
                 <div className="flex items-baseline mt-2">
                     <span className="text-4xl font-black text-white tracking-tight">{stats.totalItems}</span>
-                    <span className="ml-2 text-xs font-semibold text-slate-400 uppercase">Units Listed</span>
+                    <span className="ml-2 text-sm font-semibold text-brand-muted uppercase">Units Listed</span>
                 </div>
                 <div className="mt-3 pt-3 border-t border-slate-700">
-                    <div className="text-[10px] text-slate-500 font-mono">
+                    <div className="text-[10px] text-slate-100 font-mono">
                         FILTER MATCH / SYSTEM TOTAL
                     </div>
                 </div>
@@ -86,12 +86,12 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
 
             {/* KPI 2: Airworthiness Status (Compliance) */}
             <div className="col-span-1 md:col-span-2 bg-brand-surface p-4 rounded-lg border border-slate-700 shadow-sm">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Airworthiness Status Compliance</h2>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Airworthiness Status Compliance</h2>
                 <div className="grid grid-cols-4 gap-2">
                     {Object.values(TagColor).map((color) => (
                         <div key={color} className={`flex flex-col items-center justify-center p-2 rounded border ${getBadgeColor(color)}`}>
                             <span className="text-xl font-black">{stats.statusCounts[color]}</span>
-                            <span className="text-[9px] font-bold uppercase tracking-wider mt-1">{getStatusLabel(color)}</span>
+                            <span className="text-[11px] font-bold uppercase tracking-wider mt-1">{getStatusLabel(color)}</span>
                         </div>
                     ))}
                 </div>
@@ -107,7 +107,7 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
                         .map(([loc, count], idx) => (
                             <div key={loc} className="flex justify-between items-center text-sm">
                                 <div className="flex items-center">
-                                    <span className="w-4 text-[10px] font-mono text-slate-500 mr-2">{idx + 1}.</span>
+                                    <span className="w-4 text-[10px] font-mono text-slate-100 mr-2">{idx + 1}.</span>
                                     <span className="font-semibold text-slate-300 truncate max-w-[100px]" title={loc}>{loc}</span>
                                 </div>
                                 <span className="font-mono font-bold text-brand-primary">{count}</span>

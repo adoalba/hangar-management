@@ -42,7 +42,7 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
                             <div className="col-span-8">
                                 <h1 className="text-2xl font-black text-black leading-none tracking-tight">TRACEABILITY RECORD</h1>
                                 <h2 className="text-xl font-black text-black leading-none tracking-tight">TRACEABILITY HISTORY</h2>
-                                <p className="text-[10px] font-bold mt-1 tracking-widest uppercase text-slate-500">Aviation Technical Record • {partName}</p>
+                                <p className="text-[10px] font-bold mt-1 tracking-widest uppercase text-white">Aviation Technical Record • {partName}</p>
                             </div>
                             <div className="col-span-4 flex flex-col items-end justify-center">
                                 <div className="bg-slate-100 px-2 py-1 mb-2">
@@ -59,7 +59,7 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
                     {/* TIMELINE CONTENT */}
                     <div className="relative pl-8 border-l-2 border-black space-y-4">
                         {sortedHistory.length === 0 ? (
-                            <div className="text-center py-12 text-slate-400">
+                            <div className="text-center py-12 text-white">
                                 <p className="italic">{t.no_history || "No records found."}</p>
                             </div>
                         ) : (
@@ -184,7 +184,7 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
                         <div className="col-span-8">
                             <h1 className="text-2xl font-black text-black leading-none tracking-tight">TRACEABILITY RECORD</h1>
                             <h2 className="text-xl font-black text-black leading-none tracking-tight">HISTORIAL DE TRAZABILIDAD</h2>
-                            <p className="text-[10px] font-bold mt-1 tracking-widest uppercase text-slate-500">Aviation Technical Record • {partName}</p>
+                            <p className="text-[10px] font-bold mt-1 tracking-widest uppercase text-white">Aviation Technical Record • {partName}</p>
                         </div>
                         <div className="col-span-4 flex flex-col items-end justify-center">
                             <div className="bg-slate-100 px-2 py-1 mb-2">
@@ -231,25 +231,25 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
                     {/* AUDIT SUMMARY STATS */}
                     {sortedHistory.length > 0 && (
                         <div className="mb-6 p-4 bg-white rounded-2xl border border-slate-200 print:border-black">
-                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+                            <h3 className="text-[10px] font-black text-slate-100 uppercase tracking-widest mb-3">
                                 Audit Summary / Resumen de Auditoría
                             </h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div className="text-center p-3 bg-indigo-50 rounded-xl">
                                     <p className="text-2xl font-black text-indigo-600">{sortedHistory.length}</p>
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Total Events</p>
+                                    <p className="text-[9px] font-bold text-slate-00 uppercase">Total Events</p>
                                 </div>
                                 <div className="text-center p-3 bg-emerald-50 rounded-xl">
                                     <p className="text-2xl font-black text-emerald-600">
                                         {sortedHistory.filter(e => e.type === 'LOCATION_CHANGE').length}
                                     </p>
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Moves</p>
+                                    <p className="text-[9px] font-bold text-slate-100 uppercase">Moves</p>
                                 </div>
                                 <div className="text-center p-3 bg-amber-50 rounded-xl">
                                     <p className="text-2xl font-black text-amber-600">
                                         {new Set(sortedHistory.map(e => e.newLocation).filter(Boolean)).size}
                                     </p>
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Locations</p>
+                                    <p className="text-[9px] font-bold text-slate-100 uppercase">Locations</p>
                                 </div>
                                 <div className="text-center p-3 bg-slate-100 rounded-xl">
                                     <p className="text-sm font-black text-slate-700">
@@ -258,7 +258,7 @@ const TraceabilityModal: React.FC<TraceabilityModalProps> = ({ history, partName
                                             : 'N/A'
                                         }
                                     </p>
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase">Created</p>
+                                    <p className="text-[9px] font-bold text-slate-100 uppercase">Created</p>
                                 </div>
                             </div>
                         </div>

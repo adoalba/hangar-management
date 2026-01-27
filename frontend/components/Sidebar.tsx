@@ -32,7 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
           <div className="w-10 h-10 bg-[#b8860b] rounded-xl flex items-center justify-center shadow-lg shadow-yellow-900/20 shrink-0">
             <span className="font-bold text-xl text-white">W</span>
           </div>
-          <span className="font-bold text-lg tracking-tight text-slate-100">World Class Aviation</span>
+          <span className="font-bold text-lg tracking-tight text-white">World Class Aviation</span>
         </div>
 
         <nav className="flex-1 mt-6 px-3 space-y-2 overflow-y-auto custom-scrollbar">
@@ -46,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
                 aria-label={item.label}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${isActive
                   ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20 shadow-inner'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800 border border-transparent'
+                  : 'text-brand-muted hover:text-white hover:bg-slate-800 border border-transparent'
                   }`}
               >
                 <Icon size={22} className={isActive ? 'text-brand-primary' : 'group-hover:text-white'} />
@@ -58,13 +58,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
 
         <div className="p-4 border-t border-slate-800 space-y-2 bg-brand-dark">
           <div className="flex flex-col px-3 py-2 mb-2">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{user.role}</span>
-            <span className="text-xs font-bold text-white truncate" title={user.name}>{user.name}</span>
+            <span className="text-xs font-black text-brand-muted uppercase tracking-widest">{user.role}</span>
+            <span className="text-sm font-bold text-white truncate" title={user.name}>{user.name}</span>
           </div>
 
           <button
             onClick={() => setLanguage(language === 'ES' ? 'EN' : 'ES')}
-            className="w-full flex items-center gap-3 p-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+            className="w-full flex items-center gap-3 p-3 text-brand-muted hover:text-white hover:bg-slate-800 rounded-xl transition-all"
           >
             <span className="w-6 text-center text-xs font-bold bg-slate-800 rounded py-1">{language}</span>
             <span className="font-medium">{t.language_toggle}</span>
@@ -89,19 +89,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
             <button
               key={item.id}
               onClick={() => setView(item.id)}
-              className={`flex flex-col items-center justify-center w-full h-full gap-1 pt-2 transition-colors ${isActive ? 'text-brand-primary' : 'text-slate-300 hover:text-slate-100'}`}
+              className={`flex flex-col items-center justify-center w-full h-full gap-1 pt-2 transition-colors ${isActive ? 'text-brand-primary' : 'text-brand-muted hover:text-white'}`}
             >
               <div className={`p-1 rounded-xl ${isActive ? 'bg-brand-primary/10' : ''}`}>
                 <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
               </div>
-              <span className="text-[9px] font-bold tracking-wide uppercase truncate max-w-[60px]">{item.label}</span>
+              <span className="text-[11px] font-bold tracking-wide uppercase truncate max-w-[60px]">{item.label}</span>
             </button>
           );
         })}
         {/* Mobile Menu 'More' if needed, simplified for now to just show top 5 */}
         <button onClick={onLogout} className="flex flex-col items-center justify-center w-full h-full gap-1 pt-2 text-rose-300/80">
           <ICONS.Logout size={20} />
-          <span className="text-[9px] font-bold">Exit</span>
+          <span className="text-[11px] font-bold">Exit</span>
         </button>
 
       </nav>

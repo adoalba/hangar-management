@@ -239,37 +239,37 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                             <h2 className="text-lg font-black text-white uppercase tracking-tight">
                                 {t.send_report_email || 'Enviar Reporte por Email'}
                             </h2>
-                            <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                            <p className="text-[10px] text-slate-100 uppercase tracking-widest">
                                 {t.logistics_dispatch || 'Aviation Technical Record Dispatch'}
                             </p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
-                        <ICONS.X size={20} className="text-slate-400" />
+                        <ICONS.X size={20} className="text-white" />
                     </button>
                 </div>
 
                 <div className="p-6 space-y-6">
                     {/* Report Summary Card */}
                     <div className="bg-brand-surface-dark/50 rounded-2xl border border-slate-700 p-4">
-                        <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-3">
+                        <h3 className="text-[10px] font-bold text-slate-100 uppercase mb-3">
                             {t.report_summary || 'Resumen del Reporte'}
                         </h3>
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <div>
-                                <span className="text-slate-500 text-xs">ID:</span>
+                                <span className="text-white text-xs">ID:</span>
                                 <p className="font-mono font-bold text-brand-primary">{reportData.reportId}</p>
                             </div>
                             <div>
-                                <span className="text-slate-500 text-xs">{t.report_type || 'Tipo'}:</span>
+                                <span className="text-white text-xs">{t.report_type || 'Tipo'}:</span>
                                 <p className="font-bold text-white">{getReportTypeLabel()}</p>
                             </div>
                             <div>
-                                <span className="text-slate-500 text-xs">{t.items || 'Items'}:</span>
+                                <span className="text-white text-xs">{t.items || 'Items'}:</span>
                                 <p className="font-bold text-white text-lg">{reportData.summary.total}</p>
                             </div>
                             <div>
-                                <span className="text-slate-500 text-xs">{t.generated_by || 'Generado por'}:</span>
+                                <span className="text-white text-xs">{t.generated_by || 'Generado por'}:</span>
                                 <p className="font-bold text-white">{reportData.generatedBy}</p>
                             </div>
                         </div>
@@ -278,7 +278,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                     {/* CONTACT MANAGER SECTION */}
                     <div>
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">
                                 {t.contacts_directory || 'Directorio de Contactos'}
                             </h3>
                             <button
@@ -296,7 +296,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                                 <div className="space-y-3">
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Nombre</label>
+                                            <label className="text-[10px] text-slate-100 uppercase font-bold block mb-1">Nombre</label>
                                             <input
                                                 autoFocus
                                                 value={customName}
@@ -306,7 +306,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                                             />
                                         </div>
                                         <div>
-                                            <label className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Email</label>
+                                            <label className="text-[10px] text-slate-100 uppercase font-bold block mb-1">Email</label>
                                             <input
                                                 value={customEmail}
                                                 onChange={e => setCustomEmail(e.target.value)}
@@ -329,9 +329,9 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                         {/* Contacts List Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1">
                             {loadingContacts ? (
-                                <div className="col-span-2 text-center py-4 text-slate-500 text-xs">Cargando contactos...</div>
+                                <div className="col-span-2 text-center py-4 text-white text-xs">Cargando contactos...</div>
                             ) : contacts.length === 0 ? (
-                                <div className="col-span-2 text-center py-4 text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
+                                <div className="col-span-2 text-center py-4 text-white text-xs border border-dashed border-slate-800 rounded-xl">
                                     No hay contactos guardados. Agrega uno nuevo.
                                 </div>
                             ) : (
@@ -343,16 +343,16 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                                             onClick={() => toggleContact(contact.email)}
                                             className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all text-left relative ${isSelected
                                                 ? 'bg-brand-primary/20 border-brand-primary/50 text-white'
-                                                : 'bg-brand-surface-dark/50 border-slate-700 text-slate-400 hover:border-slate-600'
+                                                : 'bg-brand-surface-dark/50 border-slate-700 text-white hover:border-slate-600'
                                                 }`}
                                         >
                                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-brand-primary' : 'bg-slate-700'
                                                 }`}>
-                                                <ICONS.User size={16} className={isSelected ? 'text-white' : 'text-slate-400'} />
+                                                <ICONS.User size={16} className={isSelected ? 'text-white' : 'text-white'} />
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-xs font-bold truncate">{contact.name}</p>
-                                                <p className="text-[10px] text-slate-500 truncate">{contact.email}</p>
+                                                <p className="text-[10px] text-white truncate">{contact.email}</p>
                                             </div>
                                             {isSelected && <ICONS.Check size={16} className="text-brand-primary flex-shrink-0" />}
 
@@ -373,7 +373,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
 
                     {/* Quick Add Custom Email (Legacy/Manual) */}
                     <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                        <h3 className="text-[10px] font-bold text-white uppercase tracking-wider mb-2">
                             {t.manual_entry || 'Entrada Manual'}
                         </h3>
                         <div className="flex gap-2">
@@ -406,7 +406,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                     {/* Selected Recipients Chips */}
                     {recipients.length > 0 && (
                         <div>
-                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                            <h3 className="text-[10px] font-bold text-white uppercase tracking-wider mb-2">
                                 {t.recipients || 'Destinatarios'} ({recipients.length})
                             </h3>
                             <div className="flex flex-wrap gap-2">
@@ -427,7 +427,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
 
                     {/* Format Selection */}
                     <div>
-                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
+                        <h3 className="text-[10px] font-bold text-white uppercase tracking-wider mb-3">
                             {t.attachment_format || 'Formato del Adjunto'}
                         </h3>
                         <div className="flex gap-3">
@@ -435,26 +435,26 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                                 onClick={() => setFormat('PDF')}
                                 className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-xl border transition-all ${format === 'PDF'
                                     ? 'bg-rose-600/20 border-rose-500/50 text-rose-300'
-                                    : 'bg-brand-surface-dark/50 border-slate-700 text-slate-400 hover:border-slate-600'
+                                    : 'bg-brand-surface-dark/50 border-slate-700 text-white hover:border-slate-600'
                                     }`}
                             >
                                 <ICONS.Printer size={20} />
                                 <div className="text-left">
                                     <p className="text-sm font-black uppercase">PDF</p>
-                                    <p className="text-[9px] text-slate-500">{t.audit_format || 'Diseño Industrial'}</p>
+                                    <p className="text-[9px] text-white">{t.audit_format || 'Diseño Industrial'}</p>
                                 </div>
                             </button>
                             <button
                                 onClick={() => setFormat('CSV')}
                                 className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-xl border transition-all ${format === 'CSV'
                                     ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
-                                    : 'bg-brand-surface-dark/50 border-slate-700 text-slate-400 hover:border-slate-600'
+                                    : 'bg-brand-surface-dark/50 border-slate-700 text-white hover:border-slate-600'
                                     }`}
                             >
                                 <ICONS.Spreadsheet size={20} />
                                 <div className="text-left">
                                     <p className="text-sm font-black uppercase">CSV</p>
-                                    <p className="text-[9px] text-slate-500">{t.raw_data || 'Datos Técnicos'}</p>
+                                    <p className="text-[9px] text-white">{t.raw_data || 'Datos Técnicos'}</p>
                                 </div>
                             </button>
                         </div>
@@ -465,7 +465,7 @@ const ReportEmailModal: React.FC<ReportEmailModalProps> = ({
                 <div className="sticky bottom-0 bg-brand-dark border-t border-slate-800 p-6 flex gap-3 z-10">
                     <button
                         onClick={onClose}
-                        className="flex-1 py-3 rounded-xl border border-slate-700 text-slate-400 font-bold uppercase text-xs hover:bg-slate-800 transition-colors"
+                        className="flex-1 py-3 rounded-xl border border-slate-700 text-white font-bold uppercase text-xs hover:bg-slate-800 transition-colors"
                     >
                         {t.cancel || 'Cancelar'}
                     </button>

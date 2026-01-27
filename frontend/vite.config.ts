@@ -39,6 +39,7 @@ export default defineConfig({
           vendor: ['react', 'react-dom'],
           ui: ['lucide-react'],
           charts: ['recharts'],
+          scanner: ['html5-qrcode'],
         },
       },
     },

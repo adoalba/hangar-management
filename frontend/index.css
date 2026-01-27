@@ -3,19 +3,23 @@
 @tailwind utilities;
 
 :root {
-  /* ESTRATEGIA DE COLOR: NOCHE INDUSTRIAL (High Contrast) */
-  --brand-bg: #0F172A;
-  /* Slate 900 */
-  --brand-surface: #1E293B;
-  /* Slate 800 */
-  --brand-primary: #3B82F6;
-  /* Azul Acero */
+  /* ESTRATEGIA DE COLOR: NOCHE  /* Dark Mode Palette (Industrial / High Contrast) */
+  --brand-bg: #020617;
+  /* Deep Slate Black (Darker than #0f172a) */
+  --brand-dark: #0f172a;
+  /* Slate-900 */
+  --brand-darker: #020617;
+  /* Matching bg for consistency */
+  --brand-primary: #3b82f6;
+  /* Blue-500 */
+  --brand-accent: #0ea5e9;
+  /* Sky-500 */
   --brand-text: #F8FAFC;
-  /* Slate 50 */
-  --input-bg: #1E293B;
-  /* Dark Input Bg */
-  --input-border: #3B82F6;
-  /* Steel Blue Border */
+  /* Slate-50 - Crisp White */
+  --brand-muted: #F8FAFC;
+  /* Slate-50 - High Contrast for secondary text */
+  --brand-border: #334155;
+  /* Slate-700 */
 }
 
 body {

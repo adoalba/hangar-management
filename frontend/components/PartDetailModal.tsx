@@ -15,7 +15,7 @@ interface PartDetailModalProps {
 const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) => {
   const DataField = ({ label, value, highlight = false, mono = false }: { label: string; value?: string | null; highlight?: boolean; mono?: boolean }) => (
     <div className={`p-3 rounded-xl border border-slate-800/50 ${highlight ? 'bg-indigo-500/5 border-indigo-500/20' : 'bg-slate-950/30'}`}>
-      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">{label}</p>
+      <p className="text-[8px] font-black text-slate-100 uppercase tracking-widest mb-1">{label}</p>
       <p className={`text-xs font-bold truncate ${highlight ? 'text-indigo-400' : 'text-slate-200'} ${mono ? 'font-mono' : ''}`}>
         {value || <span className="text-slate-700 italic font-medium">N/A</span>}
       </p>
@@ -56,16 +56,16 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
             <div className="flex items-center gap-4">
               <div>
                 <h2 className="text-2xl font-black text-white tracking-tighter uppercase leading-none">{part.partName}</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mt-1">Record ID: {part.id}</p>
+                <p className="text-[10px] text-slate-100 font-bold uppercase tracking-[0.2em] mt-1">Record ID: {part.id}</p>
               </div>
               <div className="h-10 w-px bg-slate-800 mx-2" />
               <div className="bg-indigo-600/10 border border-indigo-500/20 px-5 py-2.5 rounded-2xl text-center">
-                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{BILINGUAL_LABELS.location}</p>
+                <p className="text-[8px] font-black text-slate-100 uppercase tracking-widest mb-0.5">{BILINGUAL_LABELS.location}</p>
                 <p className="text-sm font-black text-indigo-400 uppercase tracking-tight">{part.location}</p>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-slate-750 rounded-full text-slate-400 transition-all">
+          <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-slate-750 rounded-full text-white transition-all">
             <ICONS.X size={24} />
           </button>
         </div>
@@ -136,7 +136,7 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
               </div>
               <div className="flex justify-between items-center px-2">
                 <p className="text-[10px] font-bold text-white uppercase">{part.technicianName || "---"}</p>
-                <p className="text-[10px] font-mono text-slate-500">LIC: {part.technicianLicense || "---"}</p>
+                <p className="text-[10px] font-mono text-slate-100">LIC: {part.technicianLicense || "---"}</p>
               </div>
             </div>
             <div className="space-y-4">
@@ -146,7 +146,7 @@ const PartDetailModal: React.FC<PartDetailModalProps> = ({ part, onClose, t }) =
               </div>
               <div className="flex justify-between items-center px-2">
                 <p className="text-[10px] font-bold text-white uppercase">{part.inspectorName || "---"}</p>
-                <p className="text-[10px] font-mono text-slate-500">LIC: {part.inspectorLicense || "---"}</p>
+                <p className="text-[10px] font-mono text-slate-100">LIC: {part.inspectorLicense || "---"}</p>
               </div>
             </div>
           </div>

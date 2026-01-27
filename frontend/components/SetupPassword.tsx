@@ -71,7 +71,7 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
                     <h2 className="text-2xl font-black text-white mb-4 uppercase tracking-tighter">
                         {language === 'ES' ? "Configuración Exitosa" : "Setup Successful"}
                     </h2>
-                    <p className="text-slate-400 text-sm font-bold leading-relaxed">
+                    <p className="text-white text-sm font-bold leading-relaxed">
                         {language === 'ES'
                             ? "Tu contraseña ha sido establecida correctamente. Serás redirigido al inicio de sesión en unos segundos."
                             : "Your password has been set successfully. You will be redirected to login in a few seconds."}
@@ -93,14 +93,14 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
 
                     <div className="text-center mb-10">
                         <h1 className="text-3xl font-black text-indigo-500 tracking-tighter uppercase">Control inventario</h1>
-                        <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.2em] mt-2">
+                        <p className="text-white text-[9px] font-black uppercase tracking-[0.2em] mt-2">
                             {language === 'ES' ? "Configuración de Acceso Seguro" : "Secure Access Setup"}
                         </p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
+                            <label className="text-[10px] font-black text-slate-100 uppercase tracking-widest ml-1">
                                 {language === 'ES' ? "Nueva Contraseña" : "New Password"}
                             </label>
                             <input
@@ -114,7 +114,7 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
+                            <label className="text-[10px] font-black text-slate-100 uppercase tracking-widest ml-1">
                                 {language === 'ES' ? "Confirmar Contraseña" : "Confirm Password"}
                             </label>
                             <input
@@ -146,7 +146,7 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
                     <div className="mt-8 pt-8 border-t border-slate-800/50">
                         <div className="flex items-start gap-3 opacity-60">
                             <ICONS.ShieldCheck size={16} className="text-indigo-400 mt-1 shrink-0" />
-                            <p className="text-[10px] text-slate-400 font-bold uppercase leading-relaxed">
+                            <p className="text-[10px] text-white font-bold uppercase leading-relaxed">
                                 {language === 'ES'
                                     ? "Esta es una configuración de un solo uso. Una vez establecida, el enlace de invitación quedará invalidado."
                                     : "This is a one-time setup. Once established, the invitation link will be invalidated."}

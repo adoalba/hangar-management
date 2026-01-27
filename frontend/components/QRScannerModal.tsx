@@ -62,12 +62,12 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
             await html5QrCode.start(
                 { facingMode: 'environment' },
                 config,
-                (decodedText) => {
+                (decodedText: string) => {
                     // Successfully scanned
                     stopScanner();
                     onScan(decodedText, scanType);
                 },
-                (errorMessage) => {
+                (errorMessage: any) => {
                     // QR code not found - this is normal, keep scanning
                 }
             );
@@ -204,8 +204,8 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
                         <button
                             onClick={toggleFlash}
                             className={`p-4 rounded-2xl font-bold text-xs uppercase flex items-center gap-2 transition-all ${isFlashOn
-                                    ? 'bg-amber-500 text-amber-950'
-                                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                ? 'bg-amber-500 text-amber-950'
+                                : 'bg-slate-800 text-white hover:bg-slate-700'
                                 }`}
                         >
                             <ICONS.Zap size={20} />
@@ -219,7 +219,7 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
                             stopScanner();
                             onClose();
                         }}
-                        className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-slate-400 font-bold text-xs uppercase flex items-center gap-2"
+                        className="p-4 bg-slate-800 hover:bg-slate-700 rounded-2xl text-white font-bold text-xs uppercase flex items-center gap-2"
                     >
                         <ICONS.Edit size={20} />
                         Manual Entry / Entrada Manual
@@ -227,7 +227,7 @@ const QRScannerModal: React.FC<QRScannerModalProps> = ({
                 </div>
 
                 {/* Instructions */}
-                <p className="text-center text-slate-500 text-xs mt-4 uppercase tracking-wider">
+                <p className="text-center text-white text-xs mt-4 uppercase tracking-wider">
                     {scanType === 'part'
                         ? 'Point camera at the QR code on the component tag'
                         : 'Point camera at the location label QR code'}

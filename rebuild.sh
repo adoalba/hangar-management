@@ -54,15 +54,16 @@ else
     echo "⚠️  ALERTA: No se encontraron scripts en backend/scripts/"
 fi
 
-# 3. Reconstrucción
-echo "🏗️  [5/6] Construyendo imágenes (sin caché para asegurar frescura)..."
-# Usamos --no-cache para evitar problemas con capas corruptas anteriores
+# 3. Reconstrucción Clean
+echo "🔨 [4/6] Reconstruyendo imágenes (Clean Build)..."
+# Force remove old images to prevent caching
+podman rmi -f localhost/hangar_frontend localhost/hangar-management_frontend || true
 podman-compose build --no-cache
 
 # 4. Despliegue
 echo "🚀 [6/6] Levantando servicios..."
 # --in-pod false es CRÍTICO para que la comunicación entre contenedores funcione como en Docker
-podman-compose up -d --in-pod false
+podman-compose up -d
 
 echo "==================================================="
 echo "✅ DESPLIEGUE COMPLETADO EXITOSAMENTE"

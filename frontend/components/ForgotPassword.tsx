@@ -62,7 +62,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ t, onBack, onSuccess, o
                     <h1 className="text-2xl font-black text-white uppercase tracking-tight">
                         {t?.forgot_password || 'Recuperar Contraseña'}
                     </h1>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-2">
+                    <p className="text-[10px] text-slate-100 uppercase tracking-widest mt-2">
                         World Class Aviation • Password Recovery
                     </p>
                 </div>
@@ -78,10 +78,10 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ t, onBack, onSuccess, o
                             <h2 className="text-lg font-black text-white mb-2">
                                 {t?.check_email || '¡Revisa tu Email!'}
                             </h2>
-                            <p className="text-sm text-slate-400 mb-6">
+                            <p className="text-sm text-white mb-6">
                                 {t?.recovery_instructions || 'Si el correo está registrado, recibirás un enlace para restablecer tu contraseña.'}
                             </p>
-                            <p className="text-[10px] text-slate-500 mb-6">
+                            <p className="text-[10px] text-white mb-6">
                                 {t?.check_spam || 'Revisa también tu carpeta de spam.'}
                             </p>
                             <button
@@ -95,11 +95,11 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ t, onBack, onSuccess, o
                         /* Request Form */
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                                <label className="text-[10px] font-black text-slate-100 uppercase tracking-wider block mb-2">
                                     {t?.email_corporate || 'Email Corporativo'}
                                 </label>
                                 <div className="relative">
-                                    <ICONS.Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                                    <ICONS.Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white" />
                                     <input
                                         type="email"
                                         value={email}
@@ -110,7 +110,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ t, onBack, onSuccess, o
                                 </div>
                             </div>
 
-                            <p className="text-[10px] text-slate-500 leading-relaxed">
+                            <p className="text-[10px] text-white leading-relaxed">
                                 {t?.recovery_note || 'Ingresa el email asociado a tu cuenta. Te enviaremos un enlace seguro para restablecer tu contraseña.'}
                             </p>
 
@@ -135,7 +135,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ t, onBack, onSuccess, o
                             <button
                                 type="button"
                                 onClick={onBack}
-                                className="w-full py-3 text-slate-500 hover:text-white font-bold uppercase text-[10px] tracking-wider transition-colors flex items-center justify-center gap-2"
+                                className="w-full py-3 text-white hover:text-white font-bold uppercase text-[10px] tracking-wider transition-colors flex items-center justify-center gap-2"
                             >
                                 <ICONS.ArrowLeft size={14} />
                                 {t?.back_to_login || 'Volver al Login'}
@@ -221,7 +221,7 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, t, onSucces
                     <h1 className="text-2xl font-black text-white uppercase tracking-tight">
                         {t?.new_password || 'Nueva Contraseña'}
                     </h1>
-                    <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-2">
+                    <p className="text-[10px] text-slate-100 uppercase tracking-widest mt-2">
                         World Class Aviation • Secure Reset
                     </p>
                 </div>
@@ -230,7 +230,7 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, t, onSucces
                 <div className="bg-slate-900 rounded-3xl border border-slate-800 p-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                            <label className="text-[10px] font-black text-slate-100 uppercase tracking-wider block mb-2">
                                 {t?.new_password || 'Nueva Contraseña'}
                             </label>
                             <div className="relative">
@@ -255,7 +255,7 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, t, onSucces
                         <PasswordStrength password={password} t={t} />
 
                         <div>
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-2">
+                            <label className="text-[10px] font-black text-slate-100 uppercase tracking-wider block mb-2">
                                 {t?.confirm_password || 'Confirmar Contraseña'}
                             </label>
                             <div className="relative">
@@ -266,10 +266,10 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, t, onSucces
                                     onChange={e => setConfirmPassword(e.target.value)}
                                     placeholder="••••••••••••"
                                     className={`w-full bg-slate-950 border rounded-xl py-4 pl-12 pr-4 text-white placeholder-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none ${confirmPassword && confirmPassword !== password
-                                            ? 'border-rose-500'
-                                            : confirmPassword && confirmPassword === password
-                                                ? 'border-emerald-500'
-                                                : 'border-slate-800'
+                                        ? 'border-rose-500'
+                                        : confirmPassword && confirmPassword === password
+                                            ? 'border-emerald-500'
+                                            : 'border-slate-800'
                                         }`}
                                 />
                             </div>

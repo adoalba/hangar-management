@@ -83,7 +83,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ label, onSave, initialValue
   return (
     <div className="space-y-2">
       <div className="flex justify-between items-center px-1">
-        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{label}</label>
+        <label className="text-[9px] font-black text-slate-100 uppercase tracking-widest">{label}</label>
         {hasContent && (
           <button type="button" onClick={() => {
             const canvas = canvasRef.current;
@@ -110,7 +110,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ label, onSave, initialValue
 
 const FormInput = ({ label, value, onChange, t, type = "text", placeholder = "", options = [] }: any) => (
   <div className="space-y-1">
-    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">{label}</label>
+    <label className="text-[9px] font-black text-slate-100 uppercase tracking-widest ml-1">{label}</label>
     {type === "select" ? (
       <select
         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold transition-all"
@@ -351,7 +351,7 @@ const PartForm: React.FC<{ tag: TagColor; initialData?: AviationPart; onSubmit: 
                     <>
                       <ICONS.AlertTriangle size={48} className="text-rose-500 mb-2" />
                       <span className="text-[10px] font-black uppercase text-rose-500 mb-2 px-2 leading-tight">{cameraError}</span>
-                      <span className="text-[8px] font-bold text-slate-500 uppercase underline mt-2">Reintentar Acceso</span>
+                      <span className="text-[8px] font-bold text-slate-100 uppercase underline mt-2">Reintentar Acceso</span>
                     </>
                   ) : (
                     <>
@@ -468,7 +468,7 @@ const PartForm: React.FC<{ tag: TagColor; initialData?: AviationPart; onSubmit: 
         </section>
 
         <footer className="flex justify-between items-center pt-10 sticky bottom-0 bg-slate-950 py-4 border-t border-slate-800">
-          <button onClick={onCancel} className="px-6 py-4 text-slate-500 hover:text-white font-black uppercase text-[10px] tracking-widest transition-colors">
+          <button onClick={onCancel} className="px-6 py-4 text-slate-100 hover:text-white font-black uppercase text-[10px] tracking-widest transition-colors">
             {t.cancel}
           </button>
           <button

@@ -57,7 +57,7 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password, t, showRe
             {/* Strength Bar */}
             <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                    <span className="text-[9px] font-bold text-slate-100 uppercase tracking-wider">
                         {t?.password_strength || 'Fortaleza de Contraseña'}
                     </span>
                     <span
@@ -87,8 +87,8 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password, t, showRe
                         <div key={req.key} className="flex items-center gap-2">
                             <div
                                 className={`w-3 h-3 rounded-full flex items-center justify-center transition-all ${req.met
-                                        ? 'bg-emerald-500'
-                                        : 'bg-slate-700 border border-slate-600'
+                                    ? 'bg-emerald-500'
+                                    : 'bg-slate-700 border border-slate-600'
                                     }`}
                             >
                                 {req.met && (
@@ -108,8 +108,8 @@ const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password, t, showRe
             {/* Valid/Invalid Badge */}
             {password && (
                 <div className={`flex items-center gap-2 p-2 rounded-xl border ${isValid
-                        ? 'bg-emerald-500/10 border-emerald-500/30'
-                        : 'bg-rose-500/10 border-rose-500/30'
+                    ? 'bg-emerald-500/10 border-emerald-500/30'
+                    : 'bg-rose-500/10 border-rose-500/30'
                     }`}>
                     {isValid ? (
                         <>

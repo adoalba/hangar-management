@@ -45,16 +45,11 @@ services:
     restart: always
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: hangar_frontend_prod:latest
     container_name: hangar_frontend
     environment:
       VITE_API_URL: /api
       NODE_ENV: production
-    volumes:
-      - ./frontend:/app:Z
-      - /app/node_modules
     networks:
       - hangar_net
     expose:

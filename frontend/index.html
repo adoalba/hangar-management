@@ -1,12 +1,14 @@
+```html
 <!DOCTYPE html>
 <html lang="es">
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description"
-    content="WCA Inventory: Industrial Aviation Maintenance & Logistics System. Real-time tracking, traceability, and stock management." />
-  <meta name="theme-color" content="#0F172A" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5" />
+  <meta name="description" content="Industrial Hangar Management System - Traceability, Inventory, and Logistics." />
+  <meta name="theme-color" content="#020617" />
+
   <title>World Class Aviation | Hangar Terminal</title>
   <style>
     :root {
@@ -24,29 +26,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
-  }
-}
-</script>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="WCA Inventory">
   <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
   <link rel="manifest" href="/manifest.json">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" href="/index.css" as="style">
   <link rel="preconnect" href="https://flagcdn.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
-    rel="stylesheet">
   <link rel="stylesheet" href="/index.css">
 </head>
 
@@ -55,15 +38,17 @@
   <div id="print-section"></div>
   <script type="module" src="/index.tsx"></script>
   <script>
-    if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => {
-            console.log('SW registered: ', registration.scope);
-          })
-          .catch((registrationError) => {
-            console.log('SW registration failed: ', registrationError);
-          });
+    // FORCE UNREGISTER SERVICE WORKER TO CLEAR STALE DEV CACHE
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+          console.log('Service Worker Unregistered (Cache Buster)');
+        }
+      });
+      // Clear Caches
+      caches.keys().then(names => {
+        for (let name of names) caches.delete(name);
       });
     }
   </script>

@@ -350,7 +350,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                     <div className="bg-slate-900 border-2 border-rose-500 rounded-3xl p-8 max-w-md text-center">
                         <ICONS.AlertTriangle size={64} className="text-rose-500 mx-auto mb-4" />
                         <h2 className="text-xl font-black text-rose-400 uppercase mb-2">Quarantine Warning</h2>
-                        <p className="text-sm text-slate-400 mb-6">
+                        <p className="text-sm text-white mb-6">
                             This is a <span className="font-black text-rose-500">REJECTED (RED)</span> component.
                             Moving to <span className="font-black text-white">{targetLocation}</span> is not an authorized quarantine zone.
                         </p>
@@ -395,7 +395,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
 
                         {/* Progress Steps */}
                         <div className="space-y-2 mt-4">
-                            <div className={`flex items-center gap-3 justify-center ${!isUpdating ? 'text-emerald-400' : 'text-slate-500'}`}>
+                            <div className={`flex items-center gap-3 justify-center ${!isUpdating ? 'text-emerald-400' : 'text-white'}`}>
                                 {!isUpdating ? <ICONS.Yellow size={16} /> : <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />}
                                 <span className="text-xs font-bold uppercase">1. Saving to Database</span>
                             </div>
@@ -412,7 +412,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                         {/* Part Info */}
                         {part && (
                             <div className="mt-6 p-3 bg-slate-900 rounded-xl border border-slate-800">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">Component</p>
+                                <p className="text-[10px] font-bold text-slate-100 uppercase">Component</p>
                                 <p className="text-sm font-black text-white">{part.pn} • {part.sn}</p>
                                 {targetLocation && (
                                     <p className="text-xs font-bold text-emerald-400 mt-1">→ {targetLocation}</p>
@@ -432,7 +432,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                     </h1>
                 </div>
                 <button onClick={onClose} className="p-3 bg-slate-800 rounded-full hover:bg-slate-700">
-                    <ICONS.X size={20} className="text-slate-400" />
+                    <ICONS.X size={20} className="text-white" />
                 </button>
             </div>
 
@@ -446,11 +446,11 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
 
                         return (
                             <div key={label} className="flex items-center">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white'
                                     }`}>
                                     {idx + 1}
                                 </div>
-                                <span className={`ml-2 text-xs font-bold uppercase ${isActive ? 'text-white' : 'text-slate-500'
+                                <span className={`ml-2 text-xs font-bold uppercase ${isActive ? 'text-white' : 'text-white'
                                     }`}>
                                     {label}
                                 </span>
@@ -470,7 +470,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                         <h2 className="text-2xl font-black text-white uppercase mb-2">
                             Start Scanning
                         </h2>
-                        <p className="text-slate-500 text-sm mb-8">
+                        <p className="text-white text-sm mb-8">
                             Scan the QR code on the component tag to begin
                         </p>
 
@@ -563,7 +563,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                                                 ? 'bg-indigo-600 border-indigo-500 text-white cursor-not-allowed'
                                                 : isQuarantine
                                                     ? 'bg-rose-950 border-rose-700 text-rose-400 hover:bg-rose-900 hover:text-white'
-                                                    : 'bg-slate-950 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'
+                                                    : 'bg-slate-950 border-slate-700 text-white hover:bg-slate-800 hover:text-white'
                                                 }`}
                                         >
                                             {loc}
@@ -600,7 +600,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
                         {/* Reset button */}
                         <button
                             onClick={resetScan}
-                            className="mt-4 w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-bold text-xs uppercase"
+                            className="mt-4 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-xs uppercase"
                         >
                             Scan Different Part / Escanear Otra Pieza
                         </button>
@@ -618,7 +618,7 @@ const ScanPage: React.FC<ScanPageProps> = ({ recordId, user, token, inventory, o
 
                             <div className="flex items-center justify-center gap-4 mb-8">
                                 <div className="bg-slate-800 p-4 rounded-xl text-center">
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase">From</p>
+                                    <p className="text-[9px] font-bold text-slate-100 uppercase">From</p>
                                     <p className="text-lg font-black text-white uppercase">
                                         {part.location || 'N/A'}
                                     </p>

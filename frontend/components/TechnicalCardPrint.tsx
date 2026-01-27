@@ -225,7 +225,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                     <div className="col-span-8 space-y-px">
                         <div className="flex border border-slate-300 bg-white">
                             <div className="w-1/4 bg-slate-50 p-1 border-r border-slate-200">
-                                <span className="text-[5px] font-bold text-slate-500 uppercase">P/N</span>
+                                <span className="text-[5px] font-bold text-slate-100 uppercase">P/N</span>
                             </div>
                             <div className="flex-1 p-1">
                                 <span className="text-[10px] font-black text-slate-900">{part.pn}</span>
@@ -233,7 +233,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                         </div>
                         <div className="flex border border-slate-300 bg-white">
                             <div className="w-1/4 bg-slate-50 p-1 border-r border-slate-200">
-                                <span className="text-[5px] font-bold text-slate-500 uppercase">S/N</span>
+                                <span className="text-[5px] font-bold text-slate-100 uppercase">S/N</span>
                             </div>
                             <div className="flex-1 p-1">
                                 <span className="text-[10px] font-black text-slate-900">{part.sn}</span>
@@ -241,7 +241,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                         </div>
                         <div className="flex border border-slate-300 bg-white">
                             <div className="w-1/4 bg-slate-50 p-1 border-r border-slate-200">
-                                <span className="text-[5px] font-bold text-slate-500 uppercase">NOMBRE</span>
+                                <span className="text-[5px] font-bold text-slate-100 uppercase">NOMBRE</span>
                             </div>
                             <div className="flex-1 p-1 overflow-hidden">
                                 <span className="text-[8px] font-bold text-slate-800 condensed-text truncate block">{part.partName}</span>
@@ -249,7 +249,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                         </div>
                         <div className="flex border border-slate-300 bg-white">
                             <div className="w-1/4 bg-slate-50 p-1 border-r border-slate-200">
-                                <span className="text-[5px] font-bold text-slate-500 uppercase">MARCA</span>
+                                <span className="text-[5px] font-bold text-slate-100 uppercase">MARCA</span>
                             </div>
                             <div className="flex-1 p-1">
                                 <span className="text-[8px] font-bold text-slate-800">{part.brand}</span>
@@ -331,7 +331,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                 <div className="mx-1 border border-slate-300 bg-white p-1">
                     {part.tagColor === TagColor.YELLOW && (
                         <div className="flex items-center gap-2">
-                            <span className="text-[6px] font-bold text-slate-500 uppercase">SHELF LIFE:</span>
+                            <span className="text-[6px] font-bold text-slate-100 uppercase">SHELF LIFE:</span>
                             <span className="text-[10px] font-black text-rose-600">{shelfLifeDate}</span>
                         </div>
                     )}
@@ -345,7 +345,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                     )}
                     {(part.tagColor === TagColor.GREEN || part.tagColor === TagColor.WHITE) && (
                         <div className="flex items-center gap-3">
-                            <span className="text-[6px] font-bold text-slate-500 uppercase">REASON:</span>
+                            <span className="text-[6px] font-bold text-slate-100 uppercase">REASON:</span>
                             <span className="text-[8px] font-bold text-slate-800">{part.removalReason || 'N/A'}</span>
                         </div>
                     )}
@@ -374,7 +374,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                         <div className="grid grid-cols-2 h-[35px]">
                             <div className="p-1 border-r border-slate-100">
                                 <p className="text-[6px] font-bold text-slate-800 truncate">{part.technicianName || 'N/A'}</p>
-                                <p className="text-[5px] text-slate-500">LIC: {part.technicianLicense || 'N/A'}</p>
+                                <p className="text-[5px] text-white">LIC: {part.technicianLicense || 'N/A'}</p>
                             </div>
                             <div className="flex items-center justify-center p-0.5">
                                 {part.technicianSignature ? (
@@ -394,7 +394,7 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                         <div className="grid grid-cols-2 h-[35px]">
                             <div className="p-1 border-r border-slate-100">
                                 <p className="text-[6px] font-bold text-slate-800 truncate">{part.inspectorName || 'N/A'}</p>
-                                <p className="text-[5px] text-slate-500">LIC: {part.inspectorLicense || 'N/A'}</p>
+                                <p className="text-[5px] text-white">LIC: {part.inspectorLicense || 'N/A'}</p>
                             </div>
                             <div className="flex items-center justify-center p-0.5">
                                 {part.inspectorSignature ? (
@@ -419,12 +419,12 @@ const TechnicalCardPrint: React.FC<TechnicalCardPrintProps> = ({ part, t, compre
                             className="qr-code w-[25px] h-[25px] bg-white p-0.5"
                         />
                         <div>
-                            <p className="text-[5px] text-slate-400 uppercase">RECORD ID</p>
+                            <p className="text-[5px] text-white uppercase">RECORD ID</p>
                             <p className="text-[7px] font-mono font-bold text-white">{part.id}</p>
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-[4px] text-slate-500 italic">DIGITALLY GENERATED</p>
+                        <p className="text-[4px] text-white italic">DIGITALLY GENERATED</p>
                         <p className="text-[6px] text-white font-bold">{new Date().toLocaleDateString()}</p>
                     </div>
                 </div>

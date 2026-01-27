@@ -21,7 +21,7 @@ const PrintHeader: React.FC<{ part: AviationPart, qrDataUri: string, t: (key: st
           <div className="text-left">
             <h1 className="text-lg font-black text-slate-900 leading-none tracking-tight">INVENTORY</h1>
             <h1 className="text-lg font-black text-slate-900 leading-none tracking-tight">PART</h1>
-            <p className="text-[5px] font-bold mt-0.5 tracking-widest uppercase text-slate-500">Aviation Technical Record</p>
+            <p className="text-[5px] font-bold mt-0.5 tracking-widest uppercase text-white">Aviation Technical Record</p>
           </div>
         </div>
       </div>
@@ -107,7 +107,7 @@ const SignaturesSection: React.FC<{ part: AviationPart }> = ({ part }) => (
       <div className="grid grid-cols-12 h-20">
         <div className="col-span-5 p-1.5 flex flex-col justify-between border-r border-black bg-gray-50/30">
           <div>
-            <p className="text-[6px] font-bold text-slate-400 uppercase leading-none mb-1">NAME / LIC:</p>
+            <p className="text-[6px] font-bold text-white uppercase leading-none mb-1">NAME / LIC:</p>
             <p className="text-[10px] font-black uppercase leading-tight text-slate-900 mb-1">{part.technicianName}</p>
             <div className="bg-indigo-50 border border-indigo-100 px-1 py-0.5 rounded text-center">
               <p className="text-[9px] font-black text-indigo-700 uppercase tracking-tight">LIC: {part.technicianLicense}</p>
@@ -128,7 +128,7 @@ const SignaturesSection: React.FC<{ part: AviationPart }> = ({ part }) => (
       <div className="grid grid-cols-12 h-20">
         <div className="col-span-5 p-1.5 flex flex-col justify-between border-r border-black bg-gray-50/30">
           <div>
-            <p className="text-[6px] font-bold text-slate-400 uppercase leading-none mb-1">NAME / LIC:</p>
+            <p className="text-[6px] font-bold text-white uppercase leading-none mb-1">NAME / LIC:</p>
             <p className="text-[10px] font-black uppercase leading-tight text-slate-900 mb-1">{part.inspectorName}</p>
             <div className="bg-emerald-50 border border-emerald-100 px-1 py-0.5 rounded text-center">
               <p className="text-[9px] font-black text-emerald-700 uppercase tracking-tight">LIC: {part.inspectorLicense}</p>

@@ -9,6 +9,10 @@ const Sidebar = lazy(() => import('./components/Sidebar'));
 const HangarMenu = lazy(() => import('./components/HangarMenu'));
 
 // Lazy Load Heavy Components for FCP optimization
+// Lazy Load Modals (Code Splitting)
+const PartDetailModal = lazy(() => import('./components/PartDetailModal'));
+const TraceabilityModal = lazy(() => import('./components/TraceabilityModal'));
+const EmailModal = lazy(() => import('./components/EmailModal'));
 const PartForm = lazy(() => import('./components/PartForm'));
 const InventoryTable = lazy(() => import('./components/InventoryTable'));
 const LocationPopup = lazy(() => import('./components/LocationPopup'));
@@ -275,7 +279,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse" />
-              <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em]">{t.operational_terminal}</p>
+              <p className="text-brand-muted text-xs font-black uppercase tracking-[0.3em]">{t.operational_terminal}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">

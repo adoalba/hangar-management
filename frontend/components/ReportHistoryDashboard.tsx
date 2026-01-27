@@ -195,7 +195,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                             <h2 className="text-lg font-black text-white uppercase tracking-tight">
                                 {t.report_history || 'Historial de Reportes'}
                             </h2>
-                            <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+                            <p className="text-[10px] text-slate-100 uppercase tracking-widest">
                                 {t.audit_trail_tracking || 'Seguimiento y Trazabilidad de Auditoría'}
                             </p>
                         </div>
@@ -204,20 +204,20 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                         onClick={fetchReports}
                         className="p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
                     >
-                        <ICONS.Refresh size={20} className={`text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+                        <ICONS.Refresh size={20} className={`text-white ${loading ? 'animate-spin' : ''}`} />
                     </button>
                 </div>
             </div>
 
             {/* Filters */}
             <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6">
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">
+                <h3 className="text-[10px] font-black text-slate-100 uppercase tracking-widest mb-4">
                     {t.filter_reports || 'Filtrar Reportes'}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* Status Filter */}
                     <div>
-                        <label className="text-[9px] text-slate-500 uppercase font-bold mb-2 block">
+                        <label className="text-[9px] text-slate-100 uppercase font-bold mb-2 block">
                             {t.status || 'Estado'}
                         </label>
                         <div className="flex gap-2">
@@ -226,12 +226,12 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                                     key={status}
                                     onClick={() => setStatusFilter(status)}
                                     className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-bold uppercase transition-all ${statusFilter === status
-                                            ? status === 'PENDING'
-                                                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 border'
-                                                : status === 'ACKNOWLEDGED'
-                                                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 border'
-                                                    : 'bg-indigo-600 text-white'
-                                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                        ? status === 'PENDING'
+                                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 border'
+                                            : status === 'ACKNOWLEDGED'
+                                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 border'
+                                                : 'bg-indigo-600 text-white'
+                                        : 'bg-slate-800 text-white border border-slate-700'
                                         }`}
                                 >
                                     {status === 'ALL' ? t.all || 'Todos' :
@@ -244,7 +244,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
 
                     {/* Type Filter */}
                     <div>
-                        <label className="text-[9px] text-slate-500 uppercase font-bold mb-2 block">
+                        <label className="text-[9px] text-slate-100 uppercase font-bold mb-2 block">
                             {t.report_type || 'Tipo de Reporte'}
                         </label>
                         <select
@@ -262,7 +262,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
 
                     {/* Date Filter */}
                     <div>
-                        <label className="text-[9px] text-slate-500 uppercase font-bold mb-2 block">
+                        <label className="text-[9px] text-slate-100 uppercase font-bold mb-2 block">
                             {t.date_range || 'Rango de Fecha'}
                         </label>
                         <div className="flex gap-2">
@@ -271,8 +271,8 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                                     key={date}
                                     onClick={() => setDateFilter(date)}
                                     className={`flex-1 py-2 px-3 rounded-xl text-[10px] font-bold uppercase transition-all ${dateFilter === date
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-800 text-white border border-slate-700'
                                         }`}
                                 >
                                     {date === 'ALL' ? t.all || 'Todo' : date}
@@ -294,12 +294,12 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
 
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
-                        <ICONS.Refresh size={32} className="text-slate-400 animate-spin" />
+                        <ICONS.Refresh size={32} className="text-white animate-spin" />
                     </div>
                 ) : filteredReports.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <ICONS.Database size={48} className="text-slate-300 mb-4" />
-                        <p className="text-slate-500 font-bold">{t.no_reports || 'No hay reportes enviados'}</p>
+                        <p className="text-white font-bold">{t.no_reports || 'No hay reportes enviados'}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -345,7 +345,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                                                     <span className="text-slate-600 text-xs">
                                                         {formatDate(report.createdAt)}
                                                     </span>
-                                                    <span className="px-1.5 py-0.5 bg-slate-200 rounded text-[9px] font-bold text-slate-500">
+                                                    <span className="px-1.5 py-0.5 bg-slate-200 rounded text-[9px] font-bold text-white">
                                                         {getTimeAgo(report.createdAt)}
                                                     </span>
                                                 </div>
@@ -433,7 +433,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                                     <h3 className="text-sm font-black text-white uppercase">
                                         {t.audit_receipt || 'Recibo de Auditoría'}
                                     </h3>
-                                    <p className="text-[10px] text-slate-500 font-mono">{selectedReport.reportId}</p>
+                                    <p className="text-[10px] text-white font-mono">{selectedReport.reportId}</p>
                                 </div>
                             </div>
                             <button
@@ -448,7 +448,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                         <div className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-slate-800/50 rounded-xl p-3">
-                                    <p className="text-[9px] text-slate-500 uppercase font-bold mb-1">
+                                    <p className="text-[9px] text-slate-100 uppercase font-bold mb-1">
                                         {t.acknowledged_by || 'Aprobado Por'}
                                     </p>
                                     <p className="text-white font-bold text-sm">
@@ -456,7 +456,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                                     </p>
                                 </div>
                                 <div className="bg-slate-800/50 rounded-xl p-3">
-                                    <p className="text-[9px] text-slate-500 uppercase font-bold mb-1">
+                                    <p className="text-[9px] text-slate-100 uppercase font-bold mb-1">
                                         {t.timestamp || 'Marca de Tiempo'}
                                     </p>
                                     <p className="text-white font-bold text-sm">
@@ -466,7 +466,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                             </div>
 
                             <div className="bg-slate-800/50 rounded-xl p-3">
-                                <p className="text-[9px] text-slate-500 uppercase font-bold mb-1">
+                                <p className="text-[9px] text-slate-100 uppercase font-bold mb-1">
                                     {t.recipient_email || 'Email Destinatario'}
                                 </p>
                                 <p className="text-indigo-400 font-mono text-sm">
@@ -475,7 +475,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                             </div>
 
                             <div className="bg-slate-800/50 rounded-xl p-3">
-                                <p className="text-[9px] text-slate-500 uppercase font-bold mb-1">
+                                <p className="text-[9px] text-slate-100 uppercase font-bold mb-1">
                                     {t.device_fingerprint || 'Huella Digital del Dispositivo'}
                                 </p>
                                 <p className="text-slate-300 font-mono text-[10px] break-all">
@@ -484,7 +484,7 @@ const ReportHistoryDashboard: React.FC<ReportHistoryDashboardProps> = ({
                             </div>
 
                             <div className="bg-slate-800/50 rounded-xl p-3">
-                                <p className="text-[9px] text-slate-500 uppercase font-bold mb-1">
+                                <p className="text-[9px] text-slate-100 uppercase font-bold mb-1">
                                     {t.report_type || 'Tipo de Reporte'}
                                 </p>
                                 <p className="text-white font-bold text-sm">

@@ -173,8 +173,8 @@ const LocationQRGenerator: React.FC<LocationQRGeneratorProps> = ({ t, onClose })
                                 key={loc.code}
                                 onClick={() => toggleLocation(loc.code)}
                                 className={`p-3 rounded-xl text-xs font-bold uppercase transition-all border ${selectedLocations.includes(loc.code)
-                                        ? 'bg-emerald-600 border-emerald-500 text-white'
-                                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                                    ? 'bg-emerald-600 border-emerald-500 text-white'
+                                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
                                     }`}
                             >
                                 {loc.code}

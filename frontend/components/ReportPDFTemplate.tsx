@@ -68,7 +68,7 @@ const ReportPDFTemplate: React.FC<ReportPDFTemplateProps> = ({ reportData, t }) 
                         <div className="flex justify-between items-start">
                             <div>
                                 <h1 className="text-xl font-black tracking-tight">WORLD CLASS AVIATION</h1>
-                                <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Aviation Technical Records & Logistics</p>
+                                <p className="text-[8px] font-bold text-slate-100 uppercase tracking-widest">Aviation Technical Records & Logistics</p>
                             </div>
                             <div className="text-right">
                                 <div className="border-2 border-black px-4 py-2 bg-slate-100">
@@ -103,7 +103,7 @@ const ReportPDFTemplate: React.FC<ReportPDFTemplateProps> = ({ reportData, t }) 
                             <div className="grid grid-cols-5 divide-x divide-black">
                                 <div className="p-2 text-center">
                                     <p className="text-2xl font-black">{reportData.summary.total}</p>
-                                    <p className="text-[7px] font-bold text-slate-500 uppercase">Total Items</p>
+                                    <p className="text-[7px] font-bold text-slate-100 uppercase">Total Items</p>
                                 </div>
                                 {Object.entries(reportData.summary.byStatus).map(([status, count]) => (
                                     <div key={status} className="p-2 text-center">

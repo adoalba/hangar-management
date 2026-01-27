@@ -45,7 +45,8 @@ export const BLOCK_ICONS = {
 
 // Card type badges as SVG
 export const getCardTypeBadgeSVG = (type: 'YELLOW' | 'GREEN' | 'WHITE' | 'RED'): string => {
-    const configs = {
+    type BadgeConfig = { bg: string; text: string; textColor: string; border?: string; };
+    const configs: Record<string, BadgeConfig> = {
         YELLOW: { bg: '#eab308', text: 'SERVICEABLE', textColor: '#0f172a' },
         GREEN: { bg: '#10b981', text: 'REPAIRABLE', textColor: '#ffffff' },
         WHITE: { bg: '#f8fafc', text: 'REMOVED', textColor: '#0f172a', border: '#1e293b' },

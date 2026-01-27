@@ -133,7 +133,7 @@ const UserManagement: React.FC<{ t: any; token: string; addToast: (msg: string, 
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Gestión de Personal</h2>
-          <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em]">Control de Acceso y Roles</p>
+          <p className="text-white text-[10px] font-bold uppercase tracking-[0.3em]">Control de Acceso y Roles</p>
         </div>
         <button
           onClick={openNewUserForm}
@@ -167,7 +167,7 @@ const UserManagement: React.FC<{ t: any; token: string; addToast: (msg: string, 
               {!editingUser && (
                 <div className="space-y-4">
                   <div className="p-4 bg-slate-950 border border-indigo-500/20 rounded-xl">
-                    <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Clave Segura (Generada por Servidor)</p>
+                    <p className="text-[10px] font-black text-slate-100 uppercase mb-2">Clave Segura (Generada por Servidor)</p>
                     <p className="font-mono text-indigo-400 font-bold">{password || "Generando..."}</p>
                     <button onClick={fetchAndSetSecurePassword} className="text-[9px] text-slate-600 underline mt-2 uppercase font-bold">Regenerar</button>
                   </div>
@@ -202,7 +202,7 @@ const UserManagement: React.FC<{ t: any; token: string; addToast: (msg: string, 
           <div className="w-full max-w-sm bg-slate-900 border border-rose-500/20 rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-75 duration-300 text-center">
             <ICONS.AlertTriangle size={48} className="mx-auto text-rose-500 mb-4" />
             <h2 className="text-xl font-black text-white mb-2">¿Confirmar Eliminación?</h2>
-            <p className="text-sm text-slate-400 mb-6">Esta acción es irreversible y eliminará a <b className="text-white">{confirmDelete.name}</b> permanentemente.</p>
+            <p className="text-sm text-white mb-6">Esta acción es irreversible y eliminará a <b className="text-white">{confirmDelete.name}</b> permanentemente.</p>
             <div className="flex gap-4">
               <button onClick={() => setConfirmDelete(null)} className="flex-1 py-3 bg-slate-800 rounded-2xl font-bold">Cancelar</button>
               <button onClick={handleDelete} className="flex-1 py-3 bg-rose-600 rounded-2xl font-black">Sí, Eliminar</button>
@@ -213,13 +213,13 @@ const UserManagement: React.FC<{ t: any; token: string; addToast: (msg: string, 
 
       <div className="bg-slate-900/50 border border-slate-800 rounded-[2.5rem] overflow-hidden">
         <table className="w-full">
-          <thead><tr className="border-b border-slate-800"><th className="p-4 text-left text-xs text-slate-500 uppercase">Usuario</th><th className="p-4 text-left text-xs text-slate-500 uppercase">Rol</th><th className="p-4 text-left text-xs text-slate-500 uppercase">Estado</th><th className="p-4 text-right text-xs text-slate-500 uppercase">Acciones</th></tr></thead>
+          <thead><tr className="border-b border-slate-800"><th className="p-4 text-left text-xs text-slate-100 uppercase">Usuario</th><th className="p-4 text-left text-xs text-slate-100 uppercase">Rol</th><th className="p-4 text-left text-xs text-slate-100 uppercase">Estado</th><th className="p-4 text-right text-xs text-slate-100 uppercase">Acciones</th></tr></thead>
           <tbody>
             {users.map(user => (
               <tr key={user.id} className="border-b border-slate-800/50 hover:bg-slate-800/20">
-                <td className="p-4"><div className="font-bold">{user.name}</div><div className="text-xs text-slate-500">{user.email}</div></td>
+                <td className="p-4"><div className="font-bold">{user.name}</div><div className="text-xs text-white">{user.email}</div></td>
                 <td className="p-4">
-                  <div className={`flex items-center gap-2 text-xs font-bold uppercase ${user.role === UserRole.ADMIN ? 'text-indigo-400' : user.role === UserRole.TECHNICIAN ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  <div className={`flex items-center gap-2 text-xs font-bold uppercase ${user.role === UserRole.ADMIN ? 'text-indigo-400' : user.role === UserRole.TECHNICIAN ? 'text-emerald-400' : 'text-white'}`}>
                     {user.role === UserRole.ADMIN ? <ICONS.Shield size={12} /> : user.role === UserRole.TECHNICIAN ? <ICONS.Green size={12} /> : <ICONS.Eye size={12} />}
                     {user.role === UserRole.ADMIN ? 'Administrador' : user.role === UserRole.TECHNICIAN ? 'Técnico' : 'Consulta'}
                   </div>

@@ -11,7 +11,7 @@ const WorldClassLogo: React.FC = () => (
         <div key={i} className="w-full h-[3px] bg-black"></div>
       ))}
     </div>
-    
+
     {/* Curved WORLD at top */}
     <div className="absolute top-2 w-full text-center">
       <svg viewBox="0 0 200 60" className="w-full h-auto">
@@ -24,8 +24,8 @@ const WorldClassLogo: React.FC = () => (
 
     {/* CLASS in center - matching the prominent white text */}
     <div className="absolute z-10 flex items-baseline">
-       <span className="text-white font-serif font-black text-[46px] tracking-tight leading-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">CLASS</span>
-       <span className="text-white font-serif font-bold text-[10px] ml-1 mb-1">INC.</span>
+      <span className="text-white font-serif font-black text-[46px] tracking-tight leading-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">CLASS</span>
+      <span className="text-white font-serif font-bold text-[10px] ml-1 mb-1">INC.</span>
     </div>
 
     {/* Curved AVIATION at bottom */}
@@ -66,7 +66,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      
+
       const data = await res.json();
 
       if (res.ok && data.status === 'success') {
@@ -83,40 +83,40 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-slate-100 overflow-hidden relative">
+    <div className="min-h-screen flex flex-col bg-black text-white overflow-hidden relative">
       <div className="flex-1 flex items-center justify-center p-4 relative z-10">
         <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative">
-          
+
           <div className="text-center mb-4">
             <WorldClassLogo />
-            <p className="text-slate-500 text-[9px] font-black uppercase tracking-[0.2em] -mt-4">{t.login_encryption}</p>
+            <p className="text-white text-[9px] font-black uppercase tracking-[0.2em] -mt-4">{t.login_encryption}</p>
           </div>
 
           <div className="mb-8 p-4 bg-black/40 border border-slate-800 rounded-2xl">
-             <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest text-center mb-3">{t.select_lang}</p>
-             <div className="flex gap-2">
-                <button 
-                  type="button"
-                  onClick={() => setLanguage('ES')}
-                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${language === 'ES' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-white'}`}
-                >
-                  <img src="https://flagcdn.com/w20/es.png" className="w-4" alt="ES" />
-                  ESPAÑOL
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setLanguage('EN')}
-                  className={`flex-1 py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${language === 'EN' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-slate-500 hover:text-white'}`}
-                >
-                  <img src="https://flagcdn.com/w20/us.png" className="w-4" alt="EN" />
-                  ENGLISH
-                </button>
-             </div>
+            <p className="text-[10px] font-black text-white uppercase tracking-widest text-center mb-3">{t.select_lang}</p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLanguage('ES')}
+                className={`flex-1 py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${language === 'ES' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-white hover:text-white'}`}
+              >
+                <img src="https://flagcdn.com/w20/es.png" className="w-4" alt="ES" />
+                ESPAÑOL
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguage('EN')}
+                className={`flex-1 py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 ${language === 'EN' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900 text-white hover:text-white'}`}
+              >
+                <img src="https://flagcdn.com/w20/us.png" className="w-4" alt="EN" />
+                ENGLISH
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t.username}</label>
+              <label className="text-[10px] font-black text-white uppercase tracking-widest ml-1">{t.username}</label>
               <input
                 required
                 type="text"
@@ -128,7 +128,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{t.password}</label>
+              <label className="text-[10px] font-black text-white uppercase tracking-widest ml-1">{t.password}</label>
               <input
                 required
                 type="password"
@@ -156,16 +156,16 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
           </form>
 
           <div className="mt-8 pt-8 border-t border-slate-800/50 text-center">
-             <p className="text-[9px] text-slate-600 font-bold uppercase leading-relaxed">
-                <ICONS.ShieldCheck size={10} className="inline mr-1 text-emerald-500" />
-                {t.login_security_notice}
-             </p>
+            <p className="text-[9px] text-white font-bold uppercase leading-relaxed">
+              <ICONS.ShieldCheck size={10} className="inline mr-1 text-emerald-500" />
+              {t.login_security_notice}
+            </p>
           </div>
         </div>
       </div>
-      
-      <footer className="p-8 flex justify-center items-center gap-4 text-slate-700">
-         <span className="text-[9px] font-black uppercase tracking-widest">{t.login_footer_layer}</span>
+
+      <footer className="p-8 flex justify-center items-center gap-4 text-white">
+        <span className="text-[9px] font-black uppercase tracking-widest">{t.login_footer_layer}</span>
       </footer>
     </div>
   );

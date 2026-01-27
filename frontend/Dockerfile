@@ -1,21 +1,15 @@
-FROM node:18-alpine
-
-
+# Stage 1: Build
+FROM node:18-alpine AS builder
 WORKDIR /app
-
-# Metadatos de construcción
-ARG BUILD_DATE
-LABEL org.opencontainers.image.created=$BUILD_DATE
-LABEL org.opencontainers.image.title="Hangar Management Frontend"
-
-
 COPY package*.json ./
 RUN npm install
-
 COPY . .
+RUN npm run build
 
-# Expone el puerto por defecto de Vite
+# Stage 2: Serve
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g serve
+COPY --from=builder /app/dist ./dist
 EXPOSE 5173
-
-# Ejecuta el servidor de desarrollo
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["serve", "-s", "dist", "-l", "5173"]
