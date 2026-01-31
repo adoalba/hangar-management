@@ -1,72 +1,21 @@
 #!/bin/bash
 set -e
 
-echo "🚀 INICIANDO PROTOCOLO DE RECONSTRUCCIÓN SRE (PODMAN)"
-echo "==================================================="
+# Colores
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# 1. PROTOCOLO DE RESETEO MAESTRO (CIRUGÍA DE KERNEL/RUNTIME)
-echo "💀 [1/6] Eliminando contenedores, volúmenes y huérfanos (Clean Slate)..."
-# Intentamos shutdown grácil con TIMEOUT estricto. Si se cuelga, matamos todo.
-timeout 10s podman-compose down --volumes --remove-orphans || echo "⚠️  podman-compose down agotó tiempo, procediendo a eliminación forzada..."
+echo -e "${YELLOW}>>> [1/3] Deteniendo servicios antiguos...${NC}"
+podman-compose down
 
-# Kill switch masivo para procesos pegados
-killall -9 podman conmon rootlessport slirp4netns 2>/dev/null || true
+echo -e "${YELLOW}>>> [2/3] Reconstruyendo imágenes (Build Clean)...${NC}"
+podman-compose build
 
-# Limpieza forzada de contenedores
-timeout 10s podman rm -fa || true
-
-# Limpieza profunda de sistema
-podman system prune -f --volumes
-
-# Eliminación NUCLEAR de volúmenes de datos (Fix Rol Admin)
-echo "💀 [2.5/6] Buscando y eliminando TODOS los volúmenes del proyecto..."
-# Borra cualquier volumen que contenga pgdata, postgres, hangar o db
-volumes=$(podman volume ls -q | grep -E 'pgdata|postgres|hangar|db' || true)
-if [ -n "$volumes" ]; then
-    for vol in $volumes; do
-        echo "   💥 Eliminando volumen: $vol"
-        podman volume rm "$vol" --force || true
-    done
-else
-    echo "   ✅ No se encontraron volúmenes residuales."
-fi
-
-echo "🔍 [DEBUG] Verificando lista de volúmenes restantes (Debe estar vacía de 'hangar'/'postgres'):"
-podman volume ls
-
-# Elimina redes, volúmenes y restos de construcción
-podman system prune -f --volumes
-
-echo "🔓 [3/6] Liberando bloqueos de Socket y Runtime..."
-# Limpieza de archivos de bloqueo temporales que causan deadlocks
-rm -f "$XDG_RUNTIME_DIR/libpod/tmp/events.sock" || true
-rm -f "$XDG_RUNTIME_DIR/libpod/tmp/socket" || true
-rm -f "$XDG_RUNTIME_DIR/containers/libpod-conmon*" || true
-
-echo "reset_complete" > /dev/null
-
-# 2. Corrección de Permisos
-echo "🔧 [4/6] Aplicando corrección de permisos..."
-if [ -f "backend/scripts/entrypoint.sh" ]; then
-    chmod +x backend/scripts/*.sh
-    echo "✅ Scripts del backend marcados como ejecutables (chmod +x)."
-else
-    echo "⚠️  ALERTA: No se encontraron scripts en backend/scripts/"
-fi
-
-# 3. Reconstrucción Clean
-echo "🔨 [4/6] Reconstruyendo imágenes (Clean Build)..."
-# Force remove old images to prevent caching
-podman rmi -f localhost/hangar_frontend localhost/hangar-management_frontend || true
-podman-compose build --no-cache
-
-# 4. Despliegue
-echo "🚀 [6/6] Levantando servicios..."
-# --in-pod false es CRÍTICO para que la comunicación entre contenedores funcione como en Docker
+echo -e "${YELLOW}>>> [3/3] Iniciando contenedores en segundo plano...${NC}"
 podman-compose up -d
 
-echo "==================================================="
-echo "✅ DESPLIEGUE COMPLETADO EXITOSAMENTE"
-echo "   Frontend: http://localhost:8080"
-echo "   Backend : http://localhost:8080/api/inventory"
-echo "==================================================="
+echo -e "${GREEN}>>> [ÉXITO] Sistema Hangar Management Reiniciado.${NC}"
+echo -e "${GREEN}>>> Frontend disponible en: http://localhost:8080 (Nginx)${NC}"
+echo -e "${GREEN}>>> Backend disponible en:  http://localhost:5000${NC}"
+echo -e "${YELLOW}>>> Para ver logs: podman-compose logs -f${NC}"

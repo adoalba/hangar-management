@@ -10,10 +10,23 @@ from app.models import SessionLocal, User, Base
 def create_initial_admin():
     db = SessionLocal()
     
-    # Verificar si ya existe el admin
-    if db.query(User).filter(User.username == "admin").first():
-        print("[-] El usuario administrador ya existe en el sistema.")
-        db.close()
+    admin = db.query(User).filter(User.username == "admin").first()
+    hashed_pw = generate_password_hash("Admin123!@#")
+    
+    if admin:
+        print("[-] El usuario administrador ya existe. Forzando actualización de contraseña...")
+        admin.password = hashed_pw
+        admin.active = True
+        admin.suspended = False
+        try:
+            db.commit()
+            print("✅ Contraseña de administrador restablecida.")
+            print("Acceso: admin / Admin123!@#")
+        except Exception as e:
+            print(f"❌ Error al actualizar admin: {e}")
+            db.rollback()
+        finally:
+            db.close()
         return
 
     # Usar el mismo método de hashing que server.py

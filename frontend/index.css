@@ -17,7 +17,9 @@
   --brand-text: #F8FAFC;
   /* Slate-50 - Crisp White */
   --brand-muted: #F8FAFC;
-  /* Slate-50 - High Contrast for secondary text */
+  /* Slate-50 - High Contrast override */
+  --brand-text-secondary: #CBD5E1;
+  /* Slate-300 - High Contrast (Raised from Slate-400 for better visibility on dark) */
   --brand-border: #334155;
   /* Slate-700 */
 }

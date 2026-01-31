@@ -68,9 +68,11 @@ export interface AviationPart {
   technicianName: string;
   technicianLicense: string;
   technicianSignature?: string;
+  technicianSignatureMetadata?: any;
   inspectorName: string;
   inspectorLicense: string;
   inspectorSignature?: string;
+  inspectorSignatureMetadata?: any;
   signedByTechnician: boolean;
   signedByInspector: boolean;
 

@@ -1,11 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AviationPart, TagColor } from '../types';
 import { ICONS } from '../constants';
-import ReportFilters, { ReportFiltersState } from './ReportFilters';
-import ReportPDFTemplate from './ReportPDFTemplate';
-import ReportEmailModal from './ReportEmailModal';
-import { generateReportCSV, triggerReportPrint } from '../utils/reportExports';
-import { createRoot } from 'react-dom/client';
 
 interface ReportsModuleProps {
     inventory: AviationPart[];
@@ -13,510 +8,373 @@ interface ReportsModuleProps {
     t: any;
 }
 
-type ReportType = 'TOTAL_INVENTORY' | 'BY_STATUS' | 'BY_LOCATION' | 'BY_PN';
-
-interface ReportData {
-    reportId: string;
-    reportType: string;
-    generatedAt: string;
-    generatedBy: string;
-    filtersApplied: Record<string, string>;
-    data?: AviationPart[];
-    groupedData?: Record<string, AviationPart[]>;
-    summary: {
-        total: number;
-        byStatus: Record<string, number>;
-        percentages: Record<string, number>;
-    };
-}
-
-const REPORT_TYPES = [
-    { id: 'TOTAL_INVENTORY', icon: ICONS.Database, labelES: 'Inventario Total', labelEN: 'Total Inventory' },
-    { id: 'BY_STATUS', icon: ICONS.Layers, labelES: 'Por Tipo de Tarjeta', labelEN: 'By Card Type' },
-    { id: 'BY_LOCATION', icon: ICONS.MapPin, labelES: 'Por Ubicación', labelEN: 'By Location' },
-    { id: 'BY_PN', icon: ICONS.Search, labelES: 'Por Part Number', labelEN: 'By Part Number' },
-];
-
-const ReportsModule: React.FC<ReportsModuleProps> = ({ inventory, token, t }) => {
-    const [selectedReport, setSelectedReport] = useState<ReportType>('TOTAL_INVENTORY');
-    const [filters, setFilters] = useState<ReportFiltersState>({
-        locations: [],
-        statuses: [],
-        dateFrom: '',
-        dateTo: '',
-        category: '',
-        pnSearch: ''
+export const ReportsModule: React.FC<ReportsModuleProps> = ({ inventory, token, t }) => {
+    // --- ESTADOS ---
+    const [selectedReport, setSelectedReport] = useState<'INVENTORY' | 'LOCATION' | 'STATUS' | 'PN'>('INVENTORY');
+    const [filters, setFilters] = useState({
+        search: '',
+        status: '',
+        startDate: '',
+        endDate: ''
     });
-    const [reportData, setReportData] = useState<ReportData | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [showEmailModal, setShowEmailModal] = useState(false);
     const [exporting, setExporting] = useState(false);
-    const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-    // Available filter options derived from inventory
-    const availableLocations = useMemo(() => {
-        const locs = new Set(inventory.map(p => p.location).filter(Boolean));
-        return Array.from(locs).sort();
-    }, [inventory]);
+    // Toast simulation
+    const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'loading', text: string } | null>(null);
 
-    const getEndpointUrl = useCallback((reportType: ReportType, filters: ReportFiltersState) => {
-        const params = new URLSearchParams();
+    // Helper para status
+    const getStatusLabel = (tagColor: string) => {
+        if (tagColor === 'YELLOW') return 'SERVICEABLE';
+        if (tagColor === 'GREEN') return 'REPAIRABLE';
+        if (tagColor === 'RED') return 'UNSERVICEABLE';
+        if (tagColor === 'WHITE') return 'REMOVED-OK';
+        return tagColor;
+    };
 
-        if (filters.locations.length > 0) {
-            params.set('location', filters.locations.join(','));
-        }
-        if (filters.statuses.length > 0) {
-            params.set('status', filters.statuses.join(','));
-        }
-        if (filters.dateFrom) {
-            params.set('date_from', filters.dateFrom);
-        }
-        if (filters.dateTo) {
-            params.set('date_to', filters.dateTo);
-        }
-        if (filters.category) {
-            params.set('category', filters.category);
-        }
+    // --- 1. LÓGICA DE FILTRADO (VISTA PREVIA) ---
+    const previewData = useMemo(() => {
+        if (!inventory) return [];
 
-        const queryString = params.toString() ? `?${params.toString()}` : '';
+        return inventory.filter(item => {
+            const statusLabel = getStatusLabel(item.tagColor);
 
-        switch (reportType) {
-            case 'TOTAL_INVENTORY':
-                return `/api/reports/inventory${queryString}`;
-            case 'BY_STATUS':
-                return `/api/reports/by-status${queryString}`;
-            case 'BY_LOCATION':
-                return `/api/reports/by-location${queryString}`;
-            case 'BY_PN':
-                if (!filters.pnSearch) return null;
-                return `/api/reports/by-pn/${encodeURIComponent(filters.pnSearch)}${queryString}`;
-            default:
-                return null;
-        }
-    }, []);
+            // A. Búsqueda Texto
+            const term = filters.search.toLowerCase();
+            let matchesSearch = true;
 
-    const generateReport = useCallback(async () => {
-        if (selectedReport === 'BY_PN' && !filters.pnSearch) {
-            setError(t.reports_pn_required || 'Ingrese un Part Number para generar este reporte');
-            return;
-        }
-
-        setLoading(true);
-        setError('');
-
-        const url = getEndpointUrl(selectedReport, filters);
-        if (!url) {
-            setError('URL de reporte inválida');
-            setLoading(false);
-            return;
-        }
-
-        try {
-            const response = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.message || errData.error || 'Error generando reporte');
+            if (term) {
+                if (selectedReport === 'PN') matchesSearch = (item.pn || '').toLowerCase().includes(term);
+                else if (selectedReport === 'LOCATION') matchesSearch = (item.location || '').toLowerCase().includes(term);
+                else matchesSearch =
+                    (item.pn || '').toLowerCase().includes(term) ||
+                    (item.partName || '').toLowerCase().includes(term) ||
+                    (item.location || '').toLowerCase().includes(term);
             }
 
-            const data = await response.json();
-            setReportData(data);
-        } catch (err: any) {
-            setError(err.message || 'Error de conexión');
-            setReportData(null);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedReport, filters, token, getEndpointUrl, t]);
+            // B. Filtro Status
+            const matchesStatus = !filters.status || statusLabel === filters.status;
 
-    const handleRemoteExport = async (format: 'PDF' | 'EXCEL' | 'CSV') => {
-        if (!reportData) return;
+            // C. Filtro Fechas
+            let matchesDate = true;
+            if (filters.startDate || filters.endDate) {
+                const dateStr = item.registrationDate || new Date().toISOString();
+                const itemDate = new Date(dateStr);
+                if (filters.startDate && itemDate < new Date(filters.startDate)) matchesDate = false;
+                if (filters.endDate) {
+                    const end = new Date(filters.endDate);
+                    end.setHours(23, 59, 59);
+                    if (itemDate > end) matchesDate = false;
+                }
+            }
+
+            return matchesSearch && matchesStatus && matchesDate;
+        });
+    }, [inventory, selectedReport, filters]);
+
+    // --- 2. PREPARACIÓN DE DATOS (DICCIONARIO UNIVERSAL) ---
+    const prepareDataForBackend = () => {
+        return previewData.map(item => {
+            const statusLabel = getStatusLabel(item.tagColor);
+            return {
+                ...item,
+                // MAPEO PARA PDF (Rellenar huecos del template)
+                part_name: item.partName || 'N/A',        // El PDF espera 'part_name' or 'description'
+                description: item.partName || 'N/A',
+                desc: item.partName || 'N/A',
+
+                brand_model: 'N/A',                       // Dato no disponible en inventario simple
+
+                traceability: (item as any).traceability || 'N/A',
+
+                condition: statusLabel || 'N/A',          // El PDF espera 'condition'
+                cond: statusLabel || 'N/A',
+                status: statusLabel || 'N/A',
+
+                location: item.location || 'N/A',
+                loc: item.location || 'N/A',
+                bin_shelf: item.location || 'N/A',        // Reutilizamos location
+
+                // Variantes extra por seguridad
+                pn: item.pn,
+                partNumber: item.pn,
+                part_number: item.pn,
+
+                qty: 1,
+                quantity: 1,
+
+                serial_number: item.sn,
+                sn: item.sn
+            };
+        });
+    };
+
+    // --- 3. EXPORTACIÓN PDF / EMAIL ---
+    const handleServerExport = async (format: 'PDF' | 'EMAIL') => {
+        if (previewData.length === 0) {
+            setToastMessage({ type: 'error', text: "No hay datos para procesar" });
+            setTimeout(() => setToastMessage(null), 3000);
+            return;
+        }
         setExporting(true);
+        setToastMessage({ type: 'loading', text: `Procesando ${format}...` });
+
         try {
-            const response = await fetch('/api/reports/download', {
+            const endpoint = format === 'EMAIL' ? '/api/reports/v2/email' : '/api/reports/v2/generate';
+            const robustData = prepareDataForBackend();
+
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    reportData: reportData,
-                    format: format
+                    reportType: selectedReport,
+                    filters: filters,
+                    data: robustData, // Enviamos datos mapeados
+                    format: format // Para que el backend sepa (si lo usa)
                 })
             });
 
-            if (!response.ok) throw new Error('Export failed');
+            if (!response.ok) throw new Error(await response.text());
 
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${reportData.reportId}.${format === 'EXCEL' ? 'xlsx' : format === 'CSV' ? 'csv' : 'pdf'}`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            setToast({ type: 'success', message: `${format} descargado exitosamente` });
-        } catch (err) {
+            if (format === 'EMAIL') {
+                const resJson = await response.json();
+                setToastMessage({ type: 'success', text: resJson.message || "Correo enviado" });
+            } else {
+                // DESCARGA PDF
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `WCA_Report_${selectedReport}_${Date.now()}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+                setToastMessage({ type: 'success', text: "PDF generado" });
+            }
+        } catch (err: any) {
             console.error(err);
-            setToast({ type: 'error', message: 'Error descargando archivo' });
+            setToastMessage({ type: 'error', text: "Error: " + err.message });
         } finally {
             setExporting(false);
+            setTimeout(() => setToastMessage(null), 3000);
         }
     };
 
-    const handleEmailSuccess = (message: string) => {
-        setToast({ type: 'success', message });
-        setTimeout(() => setToast(null), 5000);
-    };
-
-    const handleEmailError = (message: string) => {
-        setToast({ type: 'error', message });
-        setTimeout(() => setToast(null), 5000);
-    };
-
-    // Get data array for preview table
-    const previewData = useMemo(() => {
-        if (!reportData) return [];
-
-        if (reportData.data) {
-            return reportData.data;
+    // --- 4. EXPORTACIÓN EXCEL LOCAL (CSV) ---
+    const downloadExcel = () => {
+        if (previewData.length === 0) {
+            setToastMessage({ type: 'error', text: "Sin datos" });
+            setTimeout(() => setToastMessage(null), 3000);
+            return;
         }
 
-        if (reportData.groupedData) {
-            // Flatten grouped data for preview
-            return Object.values(reportData.groupedData).flat();
+        try {
+            // Generar CSV con BOM para que Excel abra bien los acentos
+            const headers = ["Part Number", "Description", "Location", "Status", "Qty", "Traceability"];
+            const rows = previewData.map(i => {
+                const statusLabel = getStatusLabel(i.tagColor);
+                return [
+                    `"${i.pn || ''}"`,
+                    `"${i.partName || ''}"`,
+                    `"${i.location || ''}"`,
+                    `"${statusLabel || ''}"`,
+                    1, // Quantity hardcoded
+                    `"${(i as any).traceability || ''}"`
+                ];
+            });
+
+            const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `WCA_Export_${Date.now()}.csv`; // CSV abre en Excel
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setToastMessage({ type: 'success', text: "Excel descargado" });
+        } catch (e) {
+            console.error(e);
+            setToastMessage({ type: 'error', text: "Error creando Excel" });
+        } finally {
+            setTimeout(() => setToastMessage(null), 3000);
         }
-
-        return [];
-    }, [reportData]);
-
-    const getTagBadge = (tagColor: TagColor) => {
-        const styles: Record<TagColor, string> = {
-            [TagColor.YELLOW]: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-            [TagColor.GREEN]: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-            [TagColor.WHITE]: 'bg-slate-100 text-slate-800 border-slate-300',
-            [TagColor.RED]: 'bg-rose-100 text-rose-800 border-rose-300',
-        };
-        const labels: Record<TagColor, string> = {
-            [TagColor.YELLOW]: 'SERVICEABLE',
-            [TagColor.GREEN]: 'REPAIRABLE',
-            [TagColor.WHITE]: 'REMOVED',
-            [TagColor.RED]: 'REJECTED',
-        };
-        return (
-            <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded border ${styles[tagColor]}`}>
-                {labels[tagColor]}
-            </span>
-        );
     };
 
+    // --- RENDERIZADO (DISEÑO CLEAN UI - IMAGEN 4) ---
     return (
-        <div className="space-y-6">
-            {/* Report Type Selector */}
-            <div className="bg-brand-surface rounded-3xl border border-brand-border p-6 shadow-sm">
-                <h2 className="text-xs font-black text-brand-text-secondary uppercase tracking-widest mb-4">
-                    {t.report_type || 'Tipo de Reporte'}
-                </h2>
-                <div className="grid grid-cols-2 tablet:grid-cols-4 gap-3">
-                    {REPORT_TYPES.map(type => {
-                        const Icon = type.icon;
-                        const isActive = selectedReport === type.id;
-                        const label = t.language === 'EN' ? type.labelEN : type.labelES;
-                        return (
-                            <button
-                                key={type.id}
-                                onClick={() => {
-                                    setSelectedReport(type.id as ReportType);
-                                    setReportData(null);
-                                }}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${isActive
-                                    ? 'bg-brand-primary border-brand-primary text-white shadow-lg shadow-brand-primary/20'
-                                    : 'bg-brand-bg border-brand-border text-brand-text-secondary hover:border-slate-400 hover:text-brand-text'
-                                    }`}
-                            >
-                                <Icon size={24} />
-                                <span className="text-[10px] font-black uppercase tracking-wide text-center">
-                                    {label}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {/* Sticky Filters Header for Tablet/Mobile */}
-            <div className="sticky top-0 z-30 bg-brand-bg/95 backdrop-blur-sm pt-2 pb-4 -mx-4 px-4 md:static md:bg-transparent md:p-0 md:mx-0">
-                <ReportFilters
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                    availableLocations={availableLocations}
-                    showPnSearch={selectedReport === 'BY_PN'}
-                    t={t}
-                />
-            </div>
-
-            {/* Generate Button */}
-            <div className="flex gap-4">
-                <button
-                    onClick={generateReport}
-                    disabled={loading}
-                    className="flex-1 bg-brand-primary text-white py-4 rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-brand-primary/20 hover:bg-brand-primary-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                >
-                    {loading ? (
-                        <>
-                            <ICONS.Refresh size={18} className="animate-spin" />
-                            {t.generating || 'Generando...'}
-                        </>
-                    ) : (
-                        <>
-                            <ICONS.Spreadsheet size={18} />
-                            {t.generate_report || 'Generar Reporte'}
-                        </>
-                    )}
-                </button>
-            </div>
-
-            {/* Error Display */}
-            {error && (
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-4 flex items-center gap-3">
-                    <ICONS.AlertTriangle size={20} className="text-rose-400" />
-                    <p className="text-rose-400 text-sm font-bold">{error}</p>
-                </div>
-            )}
-
-            {/* Report Results */}
-            {reportData && (
-                <div className="space-y-6">
-                    {/* Report Metadata */}
-                    <div className="bg-brand-surface rounded-3xl border border-brand-border p-6 shadow-sm">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center">
-                                    <ICONS.ShieldCheck size={24} className="text-brand-primary" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] text-brand-text-secondary uppercase font-bold tracking-widest">
-                                        {t.report_id || 'ID de Reporte'}
-                                    </p>
-                                    <p className="text-lg font-black text-brand-text font-mono">{reportData.reportId}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col md:items-end gap-1">
-                                <p className="text-[10px] text-brand-text-secondary uppercase font-bold tracking-widest">
-                                    {t.generated_at || 'Generado'}
-                                </p>
-                                <p className="text-sm font-bold text-brand-text">
-                                    {new Date(reportData.generatedAt).toLocaleString()}
-                                </p>
-                                <p className="text-xs text-brand-text-secondary">
-                                    {t.by || 'Por'}: <span className="text-brand-primary font-bold">{reportData.generatedBy}</span>
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Summary Stats */}
-                        <div className="grid grid-cols-2 tablet:grid-cols-5 gap-3 mt-6 pt-6 border-t border-brand-border">
-                            <div className="bg-brand-bg rounded-xl p-3 text-center border border-brand-border">
-                                <p className="text-2xl font-black text-brand-text">{reportData.summary.total}</p>
-                                <p className="text-[9px] font-bold text-brand-text-secondary uppercase">Total Items</p>
-                            </div>
-                            {Object.entries(reportData.summary.byStatus).map(([status, count]) => (
-                                <div key={status} className="bg-brand-bg rounded-xl p-3 text-center border border-brand-border">
-                                    <p className="text-xl font-black text-brand-text">{count}</p>
-                                    <p className="text-[9px] font-bold text-brand-text-secondary uppercase">{status}</p>
-                                    {reportData.summary.percentages[status] !== undefined && (
-                                        <p className="text-[8px] font-mono text-brand-primary font-bold">
-                                            {reportData.summary.percentages[status]}%
-                                        </p>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Export Buttons */}
-                    <div className="flex flex-col tablet:flex-row gap-4">
-                        <button
-                            onClick={() => handleRemoteExport('PDF')}
-                            disabled={exporting}
-                            className="flex-1 bg-white border border-brand-border text-brand-text py-3 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 hover:bg-slate-50 disabled:opacity-50 hover:border-brand-primary/30 transition-colors shadow-sm"
-                        >
-                            {exporting ? <ICONS.Refresh size={16} className="animate-spin" /> : <ICONS.Printer size={16} />}
-                            {t.export_pdf || 'Exportar PDF Auditoría'}
-                        </button>
-                        <button
-                            onClick={() => handleRemoteExport('EXCEL')}
-                            disabled={exporting}
-                            className="flex-1 bg-white border border-brand-border text-brand-text py-3 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 hover:bg-slate-50 disabled:opacity-50 hover:border-brand-primary/30 transition-colors shadow-sm"
-                        >
-                            {exporting ? <ICONS.Refresh size={16} className="animate-spin" /> : <ICONS.Download size={16} />}
-                            {t.export_csv || 'Exportar Excel'}
-                        </button>
-                        <button
-                            onClick={() => setShowEmailModal(true)}
-                            className="flex-1 bg-brand-primary text-white py-3 rounded-2xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 hover:bg-brand-primary-hover shadow-lg shadow-brand-primary/20 transition-all"
-                        >
-                            <ICONS.Mail size={16} />
-                            {t.send_email_report || 'Enviar por Email'}
-                        </button>
-                    </div>
-
-                    {/* Data Preview Table (Responsive: Mobile < 800px | Tablet 800-1100px | Desktop > 1100px) */}
-                    <div>
-                        <div className="px-2 pb-2 md:px-0 md:pb-0">
-                            <h3 className="text-xs font-black text-brand-text-secondary uppercase tracking-widest mb-4">
-                                {t.data_preview || 'Vista Previa de Datos'} ({previewData.length} {t.items || 'registros'})
-                            </h3>
-                        </div>
-
-                        {/* --- DESKTOP VIEW (> 1100px) --- */}
-                        <div className="hidden laptop:block overflow-hidden rounded-3xl border border-brand-border bg-white shadow-sm">
-                            <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead className="bg-brand-bg sticky top-0 border-b border-brand-border">
-                                        <tr>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Status</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">P/N</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">S/N</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Part Name</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Location</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">TAT/T.T</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">TSO</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Date</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-brand-border">
-                                        {previewData.slice(0, 50).map((item: any) => (
-                                            <tr key={item.id} className="hover:bg-brand-primary/5 transition-all">
-                                                <td className="px-4 py-3">{getTagBadge(item.tagColor)}</td>
-                                                <td className="px-4 py-3 font-mono font-bold text-brand-primary">{item.pn}</td>
-                                                <td className="px-4 py-3 font-mono text-brand-text-secondary">{item.sn}</td>
-                                                <td className="px-4 py-3 text-brand-text max-w-[200px] truncate font-bold">{item.partName}</td>
-                                                <td className="px-4 py-3 text-brand-text-secondary font-medium">{item.location}</td>
-                                                <td className="px-4 py-3 font-mono text-xs text-brand-text-secondary">{item.ttTat || '—'}</td>
-                                                <td className="px-4 py-3 font-mono text-xs text-brand-text-secondary">{item.tso || '—'}</td>
-                                                <td className="px-4 py-3 text-xs text-brand-text-secondary">{item.registrationDate}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* --- TABLET COMPACT VIEW (800px - 1100px) --- */}
-                        <div className="hidden tablet:block laptop:hidden overflow-hidden rounded-3xl border border-brand-border bg-white shadow-sm">
-                            <div className="overflow-x-auto max-h-[400px] overflow-y-auto custom-scrollbar">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead className="bg-brand-bg sticky top-0 border-b border-brand-border">
-                                        <tr>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Component</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest">Location</th>
-                                            <th className="px-4 py-3 text-[10px] font-black text-brand-text-secondary uppercase tracking-widest text-right">Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-brand-border">
-                                        {previewData.slice(0, 50).map((item: any) => (
-                                            <tr key={item.id} className="hover:bg-brand-primary/5 transition-all">
-                                                <td className="px-4 py-3">
-                                                    <div className="font-bold text-brand-text text-xs">{item.partName}</div>
-                                                    <div className="font-mono text-[10px] text-brand-primary font-bold">{item.pn}</div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="bg-brand-bg border border-brand-border px-2 py-1 rounded text-[10px] font-bold text-brand-text-secondary">
-                                                        {item.location}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <div className="flex justify-end items-center gap-2">
-                                                        {getTagBadge(item.tagColor)}
-                                                        <button className="text-brand-primary text-[10px] font-bold hover:underline uppercase">
-                                                            View
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-
-                        {/* --- MOBILE VIEW (CARDS) (< 800px) --- */}
-                        <div className="tablet:hidden grid gap-4 grid-cols-1">
-                            {previewData.slice(0, 50).map((item: any) => (
-                                <div key={item.id} className="relative bg-white text-brand-text rounded-xl p-4 shadow-sm border border-brand-border overflow-hidden ring-1 ring-black/5">
-                                    {/* Status Strip */}
-                                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${item.tagColor === 'YELLOW' ? 'bg-yellow-500' :
-                                        item.tagColor === 'GREEN' ? 'bg-emerald-500' :
-                                            item.tagColor === 'RED' ? 'bg-rose-500' : 'bg-slate-300'
-                                        }`} />
-
-                                    <div className="pl-3 space-y-3">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className="font-bold text-sm text-brand-text uppercase leading-tight">{item.partName || 'Unknown Component'}</h3>
-                                                <p className="text-[10px] text-brand-text-secondary font-bold uppercase tracking-wider mt-1">{item.brand || '---'}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[10px] font-mono font-bold text-brand-primary bg-brand-primary/5 px-2 py-0.5 rounded">{item.pn}</p>
-                                                <p className="text-[9px] font-mono text-brand-text-secondary mt-1">{item.sn}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-brand-border/50">
-                                            <div className="bg-brand-bg p-2 rounded border border-brand-border">
-                                                <span className="block text-[9px] font-bold text-brand-text-secondary uppercase">Location</span>
-                                                <span className="font-mono font-bold text-brand-text">{item.location || '---'}</span>
-                                            </div>
-                                            <div className="bg-brand-bg p-2 rounded border border-brand-border flex items-center justify-center">
-                                                {getTagBadge(item.tagColor)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {previewData.length > 50 && (
-                                <div className="text-center py-4">
-                                    <p className="text-xs text-brand-text-secondary font-bold">
-                                        {t.showing_first_50 || 'Mostrando primeros 50 registros...'}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Toast Notification */}
-            {toast && (
-                <div className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-4 ${toast.type === 'success'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-rose-600 text-white'
+        <div className="p-6 bg-gray-50 min-h-screen font-sans text-gray-800">
+            {/* TOAST OVERLAY */}
+            {toastMessage && (
+                <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-xl font-bold text-white transition-all transform translate-y-0 opacity-100 ${toastMessage.type === 'success' ? 'bg-emerald-600' :
+                        toastMessage.type === 'error' ? 'bg-rose-600' : 'bg-slate-800'
                     }`}>
-                    {toast.type === 'success' ? <ICONS.Yellow size={20} /> : <ICONS.AlertTriangle size={20} />}
-                    <span className="font-bold text-sm">{toast.message}</span>
-                    <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100">
-                        <ICONS.X size={16} />
-                    </button>
+                    {toastMessage.type === 'loading' && <ICONS.Refresh className="inline-block animate-spin mr-2" size={18} />}
+                    {toastMessage.text}
                 </div>
             )}
 
-            {/* Email Modal */}
-            <ReportEmailModal
-                isOpen={showEmailModal}
-                onClose={() => setShowEmailModal(false)}
-                reportData={reportData}
-                token={token}
-                t={t}
-                onSuccess={handleEmailSuccess}
-                onError={handleEmailError}
-            />
+            {/* Header */}
+            <div className="mb-6 flex justify-between items-end border-b pb-4 border-gray-200">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Reportes WCA</h1>
+                    <p className="text-sm text-gray-500">Gestión de inventario y exportaciones.</p>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {[
+                    { id: 'INVENTORY', label: 'Inventario Total', icon: ICONS.Inventory }, // Adapted Box to Inventory
+                    { id: 'LOCATION', label: 'Por Ubicación', icon: ICONS.MapPin },
+                    { id: 'STATUS', label: 'Por Estado', icon: ICONS.Layers },
+                    { id: 'PN', label: 'Por P/N', icon: ICONS.Search },
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => { setSelectedReport(tab.id as any); setFilters({ search: '', status: '', startDate: '', endDate: '' }); }}
+                        className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${selectedReport === tab.id
+                                ? 'bg-white border-blue-500 text-blue-600 shadow-md ring-1 ring-blue-500'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                            }`}
+                    >
+                        <tab.icon size={20} />
+                        <span className="font-bold text-sm uppercase">{tab.label}</span>
+                    </button>
+                ))}
+            </div>
+
+            {/* Barra de Filtros y Acciones */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
+                <div className="flex flex-col xl:flex-row gap-4 items-end">
+
+                    {/* Buscador */}
+                    <div className="flex-1 w-full">
+                        <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Búsqueda</label>
+                        <input
+                            type="text"
+                            placeholder="Buscar P/N..."
+                            className="w-full h-10 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                            value={filters.search}
+                            onChange={e => setFilters({ ...filters, search: e.target.value })}
+                        />
+                    </div>
+
+                    {/* Select Status */}
+                    <div className="w-full md:w-40">
+                        <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Tipo de Tarjeta</label>
+                        <select
+                            className="w-full h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm bg-white"
+                            value={filters.status}
+                            onChange={e => setFilters({ ...filters, status: e.target.value })}
+                        >
+                            <option value="">Todos</option>
+                            <option value="SERVICEABLE">Serviceable</option>
+                            <option value="REPAIRABLE">Repairable</option>
+                            <option value="UNSERVICEABLE">Unserviceable</option>
+                            <option value="REMOVED-OK">Removed OK</option>
+                        </select>
+                    </div>
+
+                    {/* Fechas */}
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Desde</label>
+                            <input
+                                type="date"
+                                className="h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm"
+                                value={filters.startDate}
+                                onChange={e => setFilters({ ...filters, startDate: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Hasta</label>
+                            <input
+                                type="date"
+                                className="h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm"
+                                value={filters.endDate}
+                                onChange={e => setFilters({ ...filters, endDate: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Botones (Restaurados Colores de Imagen 4) */}
+                    <div className="flex gap-2 w-full xl:w-auto pt-4 xl:pt-0 border-t xl:border-t-0 border-gray-100">
+                        <button
+                            onClick={() => handleServerExport('PDF')}
+                            disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black font-medium text-sm transition-colors"
+                        >
+                            <ICONS.Printer size={16} /> PDF
+                        </button>
+
+                        <button
+                            onClick={downloadExcel}
+                            disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium text-sm transition-colors"
+                        >
+                            <ICONS.Spreadsheet size={16} /> Excel
+                        </button>
+
+                        <button
+                            onClick={() => handleServerExport('EMAIL')}
+                            disabled={exporting}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors"
+                        >
+                            <ICONS.Mail size={16} /> Email
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Vista Previa */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wider">Vista Previa</h3>
+                    <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs font-bold">{previewData.length} registros</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-white text-gray-500 border-b border-gray-100 uppercase text-xs font-bold">
+                            <tr>
+                                <th className="p-4">Part Number</th>
+                                <th className="p-4">Descripción</th>
+                                <th className="p-4">Ubicación</th>
+                                <th className="p-4">Estado</th>
+                                <th className="p-4 text-center">Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {previewData.length > 0 ? previewData.map((item, idx) => {
+                                const statusLabel = getStatusLabel(item.tagColor);
+                                return (
+                                    <tr key={idx} className="hover:bg-gray-50">
+                                        <td className="p-4 font-bold text-gray-800">{item.pn}</td>
+                                        <td className="p-4 text-gray-600">{item.partName}</td>
+                                        <td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs border border-gray-200">{item.location}</span></td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${statusLabel === 'SERVICEABLE' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    statusLabel === 'REPAIRABLE' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                        statusLabel === 'UNSERVICEABLE' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                            statusLabel === 'REMOVED-OK' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                                'bg-gray-50 text-gray-600 border-gray-200'
+                                                }`}>
+                                                {statusLabel}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-center font-bold">1</td>
+                                    </tr>
+                                )
+                            }) : (
+                                <tr><td colSpan={5} className="p-8 text-center text-gray-400">Sin resultados</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     );
 };

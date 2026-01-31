@@ -15,6 +15,13 @@ if [ ! -z "$POD_IDS" ]; then
     echo "$POD_IDS" | xargs -r podman pod rm -f
 fi
 
+# 1.0.5 KILL HOST PROCESSES (Zombie Prevention)
+echo "🧟 checking for host-based zombies (Gunicorn)..."
+pkill -f "gunicorn.*app.main" || true
+pkill -f "backend.app.main:app" || true
+lsof -t -i:5000 | xargs -r kill -9 || true
+
+
 # 1.1 Stop/Kill individual containers if they survived
 podman ps -a --filter name=hangar_ --format "{{.ID}}" | xargs -r podman rm -f
 

@@ -21,186 +21,187 @@ interface ReportPDFTemplateProps {
 
 const ReportPDFTemplate: React.FC<ReportPDFTemplateProps> = ({ reportData, t }) => {
     const data = reportData.data || Object.values(reportData.groupedData || {}).flat();
-    const totalPages = Math.ceil(data.length / 25);
     const reportDate = new Date(reportData.generatedAt).toLocaleString();
-
-    const getTagColorHex = (tag: string) => {
-        switch (tag) {
-            case 'YELLOW': return '#eab308';
-            case 'GREEN': return '#10b981';
-            case 'WHITE': return '#64748b';
-            case 'RED': return '#f43f5e';
-            default: return '#6366f1';
-        }
-    };
 
     const getReportTitle = () => {
         switch (reportData.reportType) {
-            case 'TOTAL_INVENTORY': return 'REPORTE DE INVENTARIO TOTAL / TOTAL INVENTORY REPORT';
-            case 'BY_STATUS': return 'REPORTE POR TIPO DE TARJETA / REPORT BY CARD TYPE';
-            case 'BY_LOCATION': return 'REPORTE POR UBICACIÓN / REPORT BY LOCATION';
-            case 'BY_PART_NUMBER': return 'REPORTE POR PART NUMBER / REPORT BY P/N';
+            case 'TOTAL_INVENTORY': return 'TOTAL INVENTORY REPORT';
+            case 'BY_STATUS': return 'REPORT BY CARD TYPE';
+            case 'BY_LOCATION': return 'REPORT BY LOCATION';
+            case 'BY_PART_NUMBER': return 'REPORT BY PART NUMBER';
             default: return 'AVIATION INVENTORY REPORT';
         }
     };
 
-    // Split data into pages (25 items per page)
-    const pages = [];
-    for (let i = 0; i < data.length; i += 25) {
-        pages.push(data.slice(i, i + 25));
+    // Columns for Section 1 (Summary Table)
+    const SUMMARY_COLUMNS = [
+        { key: 'statusLabel', label: 'STATUS' },
+        { key: 'pn', label: 'P/N' },
+        { key: 'sn', label: 'S/N' },
+        { key: 'partName', label: 'DESC' },
+        { key: 'location', label: 'LOC' },
+        { key: 'registrationDate', label: 'REG' },
+    ];
+
+    // Split data into pages (40 items per page for Summary)
+    const summaryPages = [];
+    for (let i = 0; i < data.length; i += 40) {
+        summaryPages.push(data.slice(i, i + 40));
     }
+
+    const groups = [
+        {
+            name: "IDENTIFICATION",
+            fields: [
+                { k: 'Part Number', v: 'pn' }, { k: 'Serial Number', v: 'sn' },
+                { k: 'Description', v: 'partName' }, { k: 'Material Status', v: 'statusLabel' }
+            ]
+        },
+        {
+            name: "TECHNICAL DATA",
+            fields: [
+                { k: 'Brand', v: 'brand' }, { k: 'Model', v: 'model' },
+                { k: 'Location', v: 'location' }, { k: 'Bin/Shelf', v: 'physicalStorageLocation' },
+                { k: 'TAT/T.T', v: 'tat' }, { k: 'TSO', v: 'tso' },
+                { k: 'Shelf Life', v: 'shelfLife' }, { k: 'T.C.', v: 'tc' },
+                { k: 'CSO', v: 'cso' }, { k: 'C.REM', v: 'crem' },
+                { k: 'T.REM', v: 'trem' },
+            ]
+        },
+        {
+            name: "TRACEABILITY & HISTORY",
+            fields: [
+                { k: 'Reg. Date', v: 'registrationDate' }, { k: 'Removal Rsn', v: 'removalReason' },
+                { k: 'Rej. Rsn', v: 'rejectionReason' }, { k: 'Disposition', v: 'finalDisposition' },
+                { k: 'Observations', v: 'observations' }
+            ]
+        },
+        {
+            name: "ADMINISTRATIVE",
+            fields: [
+                { k: 'Org', v: 'organization' }, { k: 'System ID', v: 'id' },
+                { k: 'Tech', v: 'technician_name' }, { k: 'Insp', v: 'inspector_name' }
+            ]
+        }
+    ];
 
     return (
         <>
             <style>{`
-        @page { size: A4; margin: 10mm; }
+        @page { size: A4 portrait; margin: 15mm; }
         @media print {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .page-break { page-break-after: always; }
+          .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
           .no-print { display: none !important; }
         }
       `}</style>
 
-            {pages.map((pageData, pageIndex) => (
-                <div key={pageIndex} className={`w-[210mm] mx-auto bg-white text-black font-sans ${pageIndex < pages.length - 1 ? 'page-break' : ''}`}>
+            {/* --- SECTION 1: INVENTORY IDENTIFICATION TABLE (SUMMARY) --- */}
+            {summaryPages.map((pageData, pageIndex) => (
+                <div key={`summary-${pageIndex}`} className={`w-[210mm] mx-auto bg-white text-black font-sans ${pageIndex < summaryPages.length - 1 ? 'page-break' : ''}`}>
                     {/* Header */}
-                    <div className="border-b-4 border-black pb-3 mb-4">
+                    <div className="border-b-2 border-black pb-2 mb-2">
                         <div className="flex justify-between items-start">
                             <div>
-                                <h1 className="text-xl font-black tracking-tight">WORLD CLASS AVIATION</h1>
-                                <p className="text-[8px] font-bold text-slate-100 uppercase tracking-widest">Aviation Technical Records & Logistics</p>
+                                <h1 className="text-lg font-black tracking-tight">WORLD CLASS AVIATION</h1>
+                                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Section 1: Inventory Identification (Summary)</p>
                             </div>
                             <div className="text-right">
-                                <div className="border-2 border-black px-4 py-2 bg-slate-100">
+                                <div className="border border-black px-2 py-1 bg-slate-50">
                                     <p className="text-[10px] font-black uppercase">{getReportTitle()}</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Report Metadata */}
-                    <div className="grid grid-cols-12 gap-2 mb-4 text-[9px]">
-                        <div className="col-span-4 border border-black p-2">
-                            <span className="font-bold text-slate-500 block">REPORT ID:</span>
-                            <span className="font-black">{reportData.reportId}</span>
-                        </div>
-                        <div className="col-span-4 border border-black p-2">
-                            <span className="font-bold text-slate-500 block">GENERATED:</span>
-                            <span className="font-black">{reportDate}</span>
-                        </div>
-                        <div className="col-span-4 border border-black p-2">
-                            <span className="font-bold text-slate-500 block">GENERATED BY:</span>
-                            <span className="font-black">{reportData.generatedBy}</span>
-                        </div>
+                    {/* Summary Metadata */}
+                    <div className="flex gap-4 mb-2 text-[9px] border-b border-black pb-2">
+                        <div><span className="font-bold text-slate-500">ID: </span><span className="font-mono">{reportData.reportId}</span></div>
+                        <div><span className="font-bold text-slate-500">DATE: </span><span className="font-mono">{reportDate}</span></div>
+                        <div><span className="font-bold text-slate-500">PAGE: </span><span className="font-mono">{pageIndex + 1} of {summaryPages.length}</span></div>
                     </div>
 
-                    {/* Summary Stats (first page only) */}
-                    {pageIndex === 0 && (
-                        <div className="mb-4 border border-black">
-                            <div className="bg-black text-white px-3 py-1">
-                                <span className="text-[8px] font-black uppercase tracking-widest">SUMMARY / RESUMEN</span>
-                            </div>
-                            <div className="grid grid-cols-5 divide-x divide-black">
-                                <div className="p-2 text-center">
-                                    <p className="text-2xl font-black">{reportData.summary.total}</p>
-                                    <p className="text-[7px] font-bold text-slate-100 uppercase">Total Items</p>
-                                </div>
-                                {Object.entries(reportData.summary.byStatus).map(([status, count]) => (
-                                    <div key={status} className="p-2 text-center">
-                                        <p className="text-xl font-black">{count}</p>
-                                        <p className="text-[7px] font-bold uppercase" style={{ color: getTagColorHex(status) }}>
-                                            {status}
-                                        </p>
-                                        <p className="text-[8px] font-mono text-slate-400">
-                                            {reportData.summary.percentages[status] || 0}%
-                                        </p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Data Table */}
+                    {/* Summary Table */}
                     <table className="w-full border-collapse text-[8px]">
                         <thead>
-                            <tr className="bg-black text-white">
-                                <th className="border border-black p-1 text-left font-black">STATUS</th>
-                                <th className="border border-black p-1 text-left font-black">P/N</th>
-                                <th className="border border-black p-1 text-left font-black">S/N</th>
-                                <th className="border border-black p-1 text-left font-black">PART NAME</th>
-                                <th className="border border-black p-1 text-left font-black">LOCATION</th>
-                                <th className="border border-black p-1 text-left font-black">TAT/T.T</th>
-                                <th className="border border-black p-1 text-left font-black">TSO</th>
-                                <th className="border border-black p-1 text-left font-black">T.REM</th>
+                            <tr className="bg-slate-200">
+                                {SUMMARY_COLUMNS.map(col => (
+                                    <th key={col.key} className="border-b border-black p-1 text-left font-black text-black">
+                                        {col.label}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
                             {pageData.map((item: any, idx: number) => (
                                 <tr key={item.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                                    <td className="border border-black p-1">
-                                        <span
-                                            className="px-1 py-0.5 text-[7px] font-black uppercase"
-                                            style={{
-                                                backgroundColor: `${getTagColorHex(item.tagColor)}20`,
-                                                color: getTagColorHex(item.tagColor),
-                                                border: `1px solid ${getTagColorHex(item.tagColor)}`
-                                            }}
-                                        >
-                                            {item.tagColor}
-                                        </span>
-                                    </td>
-                                    <td className="border border-black p-1 font-mono font-bold">{item.pn}</td>
-                                    <td className="border border-black p-1 font-mono">{item.sn}</td>
-                                    <td className="border border-black p-1 max-w-[120px] truncate">{item.partName}</td>
-                                    <td className="border border-black p-1">{item.location}</td>
-                                    <td className="border border-black p-1 font-mono">{item.ttTat || '—'}</td>
-                                    <td className="border border-black p-1 font-mono">{item.tso || '—'}</td>
-                                    <td className="border border-black p-1 font-mono">{item.trem || '—'}</td>
+                                    {SUMMARY_COLUMNS.map(col => (
+                                        <td key={col.key} className="p-1 border-b border-slate-200 align-top">
+                                            {col.key === 'statusLabel' ? (
+                                                <span className="px-1 py-px border border-black text-[7px] font-bold uppercase whitespace-nowrap">
+                                                    {item.statusLabel || item.tagColor}
+                                                </span>
+                                            ) : (
+                                                <div className="truncate max-w-[150px]">
+                                                    {item[col.key] || '—'}
+                                                </div>
+                                            )}
+                                        </td>
+                                    ))}
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-
-                    {/* Footer */}
-                    <div className="mt-4 pt-3 border-t-2 border-black">
-                        <div className="flex justify-between items-end">
-                            {/* Signature Section */}
-                            <div className="w-1/3">
-                                <div className="border-t-2 border-black pt-2 mt-8">
-                                    <p className="text-[8px] font-black uppercase text-center">RESPONSABLE DE INVENTARIO / INVENTORY MANAGER</p>
-                                    <p className="text-[7px] text-slate-400 text-center mt-1">Firma / Signature</p>
-                                </div>
-                            </div>
-
-                            {/* Page Number */}
-                            <div className="text-[8px] font-bold text-slate-500">
-                                <p>Page {pageIndex + 1} of {pages.length || 1}</p>
-                            </div>
-
-                            {/* Certification */}
-                            <div className="text-right">
-                                <p className="text-[6px] font-bold text-slate-400 max-w-[200px]">
-                                    This document is generated automatically by the Aviation Inventory System.
-                                    Data accuracy verified at time of generation.
-                                </p>
-                                <p className="text-[7px] font-mono text-slate-500 mt-1">
-                                    {new Date().toISOString()}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Filters Applied (first page only) */}
-                    {pageIndex === 0 && reportData.filtersApplied && Object.keys(reportData.filtersApplied).length > 0 && (
-                        <div className="mt-2 text-[7px] text-slate-400">
-                            <span className="font-bold">Filters Applied: </span>
-                            {Object.entries(reportData.filtersApplied).map(([key, value]) => (
-                                <span key={key} className="mr-2">{key}: {value}</span>
-                            ))}
-                        </div>
-                    )}
                 </div>
             ))}
+
+            <div className="page-break"></div>
+
+            {/* --- SECTION 2: TECHNICAL DETAIL BLOCKS (VERTICAL) --- */}
+            <div className="w-[210mm] mx-auto bg-white text-black font-sans">
+                <div className="border-b-4 border-black pb-4 mb-6">
+                    <h1 className="text-xl font-black">SECTION 2: COMPONENT TECHNICAL RECORDS</h1>
+                    <p className="text-[10px] text-slate-500">Detailed compliance records for {data.length} items.</p>
+                </div>
+
+                <div className="flex flex-col gap-6">
+                    {data.map((item: any, idx: number) => (
+                        <div key={`detail-${idx}`} className="border-b-2 border-slate-100 pb-6 mb-2 break-inside-avoid">
+                            {/* Block Header */}
+                            <div className="bg-black text-white px-3 py-1 flex justify-between items-center mb-2">
+                                <span className="text-[10px] font-bold">P/N: {item.pn}</span>
+                                <span className="text-[10px] font-bold">S/N: {item.sn}</span>
+                                <span className="text-[9px] uppercase font-bold text-white border border-white px-1 rounded">{item.statusLabel}</span>
+                            </div>
+
+                            {/* Groups */}
+                            {groups.map(group => (
+                                <div key={group.name} className="mb-2">
+                                    <div className="bg-slate-100 px-2 py-0.5 mb-1">
+                                        <p className="text-[8px] font-black uppercase text-slate-700">{group.name}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 px-2">
+                                        {/* Render pairs */}
+                                        {group.fields.map((f, i) => {
+                                            // Simple rendering of all fields grid
+                                            return (
+                                                <div key={f.k} className="flex justify-between border-b border-dotted border-slate-300">
+                                                    <span className="text-[8px] font-bold text-slate-500">{f.k}</span>
+                                                    <span className="text-[8px] font-mono text-black text-right max-w-[200px] break-words">
+                                                        {item[f.v] || '—'}
+                                                    </span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
         </>
     );
 };

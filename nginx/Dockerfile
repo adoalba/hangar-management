@@ -19,7 +19,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Copiamos la configuración optimizada de Nginx
 # El contexto de construcción es la raíz del proyecto
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Copiamos los archivos estáticos generados en la etapa anterior
 COPY --from=frontend-build /app/dist /usr/share/nginx/html

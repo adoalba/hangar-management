@@ -46,23 +46,23 @@ export const StockIndicators: React.FC<StockIndicatorsProps> = ({ inventory, fil
     }, [filteredInventory]);
 
     // Helper for color badge
+    // ACCESSIBILITY: High Contrast / Low Ink
     const getBadgeColor = (color: TagColor) => {
         switch (color) {
-            case TagColor.YELLOW: return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-            case TagColor.GREEN: return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-            case TagColor.WHITE: return 'bg-slate-100 text-slate-800 border-slate-300';
-            case TagColor.RED: return 'bg-rose-100 text-rose-800 border-rose-300';
-            default: return 'bg-gray-100 text-gray-800';
+            case TagColor.YELLOW: return 'bg-white text-yellow-900 border-yellow-600 border-2';
+            case TagColor.GREEN: return 'bg-white text-emerald-900 border-emerald-600 border-2';
+            case TagColor.WHITE: return 'bg-white text-slate-900 border-slate-600 border-2';
+            case TagColor.RED: return 'bg-white text-rose-900 border-rose-600 border-2';
+            default: return 'bg-white text-gray-900 border-gray-600 border';
         }
     };
 
     const getStatusLabel = (color: TagColor) => {
         switch (color) {
-            // TODO: Use t() for translations if available keys exist, fallback for now
-            case TagColor.YELLOW: return "SERVICEABLE";
-            case TagColor.GREEN: return "REPAIRABLE";
-            case TagColor.WHITE: return "REMOVED";
-            case TagColor.RED: return "REJECTED";
+            case TagColor.YELLOW: return "SERVICEABLE MATERIAL";
+            case TagColor.GREEN: return "REPAIRABLE MATERIAL";
+            case TagColor.WHITE: return "REMOVED - NO DEFECT";
+            case TagColor.RED: return "REJECTED MATERIAL";
             default: return color;
         }
     }

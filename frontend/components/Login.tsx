@@ -76,6 +76,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
         setError(data.message || t.login_error);
       }
     } catch (err: any) {
+      console.error('Login error:', err);
       setError(language === 'ES' ? "Error crítico de comunicación con el terminal central." : "Critical communication error with central terminal.");
     } finally {
       setIsLoading(false);

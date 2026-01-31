@@ -1,5 +1,5 @@
 
-from flask import Flask, request, jsonify, send_from_directory, send_file, g
+from flask import Flask, request, jsonify, send_from_directory, send_file, g, Response, Blueprint, current_app
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 import uuid
 import secrets
 import string
@@ -15,84 +16,117 @@ import json
 from datetime import datetime, timedelta
 from functools import wraps
 from sqlalchemy import func, text
-
 import re
 
-from .models import SessionLocal, User, UserSession, AviationPart, Contact
-from . import server_email # Módulo de envío de correo
-from .reports import reports_bp  # Módulo de reportes granulares
+from .models import SessionLocal, User, UserSession, AviationPart, Contact, Base, engine
+from .config import Paths
+# from . import server_email # Imported later or global? Better global.
+from . import server_email
+from .database import get_db, teardown_db
+from .utils.auth import token_required, generate_secure_password
 
-import logging
-from logging.handlers import RotatingFileHandler
-import os
+# Ensure Schema Exists
+Base.metadata.create_all(bind=engine)
 
-# --- CONFIGURACIÓN DE LOGGING ---
-LOG_DIR = "/app/logs"
-if not os.path.exists(LOG_DIR) and os.access("/app", os.W_OK):
-    os.makedirs(LOG_DIR, exist_ok=True)
+# STORAGE INTEGRITY CHECK
+try:
+    from .storage_service import verify_storage_permissions
+    verify_storage_permissions()
+except ImportError:
+    pass
 
+# Ensure Directories
+Paths.validate()
+
+# Logging Setup (Global)
 log_format = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-# Consola
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_format)
 logger.addHandler(console_handler)
-
-# Archivo con rotación (si es posible escribir)
 try:
-    file_handler = RotatingFileHandler(
-        os.path.join(LOG_DIR, "app.log"), 
-        maxBytes=10*1024*1024, # 10MB
-        backupCount=5
-    )
+    file_handler = RotatingFileHandler(Paths.LOG_FILE, maxBytes=10*1024*1024, backupCount=5)
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
-except Exception:
-    logger.warning("No se pudo inicializar el log en archivo, solo consola disponible.")
+except Exception as e:
+    logger.warning(f"No se pudo inicializar el log en archivo {Paths.LOG_FILE}: {e}")
 
+# Extensions (Global)
+limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
-# --- APP SETUP ---
-app = Flask(__name__)
-CORS(app)
-Compress(app)
+# Blueprint
+main_bp = Blueprint('main', __name__)
 
-# Register Blueprints
-app.register_blueprint(reports_bp)
+# Helper: Pre-Flight
+def perform_preflight_checks():
+    logger.info("--- INICIANDO PROTOCOLO DE PRE-VUELO (STARTUP CHECKS) ---")
+    try:
+        if not os.access(Paths.STORAGE_ROOT, os.W_OK):
+             raise PermissionError(f"No write access to {Paths.STORAGE_ROOT}")
+        logger.info(f"[CHECK] Storage Write Access: OK ({Paths.STORAGE_ROOT})")
+    except Exception as e:
+        logger.critical(f"[CHECK] Storage Failure: {e}")
+    
+    try:
+        if not os.path.exists(Paths.DB_PATH):
+             logger.warning(f"[CHECK] Database file not found at {Paths.DB_PATH}")
+        else:
+             logger.info(f"[CHECK] Database file detected at {Paths.DB_PATH}")
+        with engine.connect() as connection:
+             connection.execute(text("SELECT 1"))
+             logger.info("[CHECK] Database Connectivity: OK")
+    except Exception as e:
+        logger.critical(f"[CHECK] DATABASE CRITICAL FAILURE: {e}")
+    logger.info("--- PRE-VUELO COMPLETADO ---")
 
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["2000 per day", "500 per hour"],
-    storage_uri="memory://"
-)
-
-# --- DATABASE SESSION MANAGEMENT ---
-def get_db():
-    if 'db' not in g:
-        g.db = SessionLocal()
-    return g.db
-
-@app.teardown_appcontext
-def teardown_db(exception):
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
-
-# --- ERROR HANDLERS ---
-@app.errorhandler(SQLAlchemyError)
+# Error Handlers (Attach to Blueprint)
+@main_bp.app_errorhandler(SQLAlchemyError)
 def handle_db_error(e):
     logger.error(f"Database error: {str(e)}")
     return jsonify({"message": "Error interno de base de datos"}), 500
 
-@app.errorhandler(404)
+@main_bp.app_errorhandler(404)
 def not_found(e):
     return jsonify({"message": "Recurso no encontrado"}), 404
 
-@app.errorhandler(500)
+@main_bp.app_errorhandler(500)
 def server_error(e):
     return jsonify({"message": "Error interno del servidor"}), 500
+
+# App Factory
+def create_app():
+    app = Flask(__name__)
+    CORS(app)
+    Compress(app)
+    
+    # Init Extensions
+    limiter.init_app(app)
+    
+    # Teardown
+    app.teardown_appcontext(teardown_db)
+    
+    # Register Blueprints
+    from .reports import reports_bp
+    app.register_blueprint(reports_bp)
+    
+    from .reports_v2 import reports_v2_bp
+    app.register_blueprint(reports_v2_bp)
+    
+    app.register_blueprint(main_bp)
+
+    # Pre-Flight
+    with app.app_context():
+        perform_preflight_checks()
+        
+    return app
+
+
+
+# Routes
+@main_bp.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}), 200
 
 # --- MIDDLEWARE DE SEGURIDAD Y HELPERS ---
 
@@ -106,52 +140,9 @@ def part_to_camel_dict(part):
     d = {c.name: getattr(part, c.name) for c in part.__table__.columns}
     return {to_camel_case(k): v for k, v in d.items()}
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({"message": "Token de seguridad no proporcionado"}), 401
-        
-        token = auth_header.split(' ')[1]
-        db = get_db()
-        session_record = db.query(UserSession).filter(UserSession.token == token).first()
-        
-        if not session_record or session_record.expiry < datetime.utcnow():
-            if session_record: 
-                db.delete(session_record)
-                db.commit()
-            return jsonify({"message": "Sesión inválida o expirada"}), 401
-        
-        request.user_id = session_record.user_id
-        return f(*args, **kwargs)
-    return decorated
-
-def generate_secure_password(length=14):
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()_+"
-    while True:
-        password = ''.join(secrets.choice(alphabet) for i in range(length))
-        if (any(c.islower() for c in password)
-                and any(c.isupper() for c in password)
-                and sum(c.isdigit() for c in password) >= 2
-                and any(c in "!@#$%^&*()_+" for c in password)):
-            break
-    return password
-
-def user_to_dict(user):
-    return {
-        "id": user.id, 
-        "name": user.name, 
-        "username": user.username, 
-        "email": user.email, 
-        "role": user.role, 
-        "active": user.active, 
-        "suspended": user.suspended
-    }
-
 # --- ENDPOINTS DE USUARIO Y SESIÓN ---
 
-@app.route('/api/login-check', methods=['POST'])
+@main_bp.route('/api/login-check', methods=['POST'])
 @limiter.limit("5 per minute")
 def login_check():
     data = request.json
@@ -176,7 +167,7 @@ def login_check():
     
     return jsonify({"message": "Credenciales de acceso incorrectas"}), 401
 
-@app.route('/api/update-password', methods=['POST'])
+@main_bp.route('/api/update-password', methods=['POST'])
 @token_required
 def update_password():
     data = request.json
@@ -193,7 +184,7 @@ def update_password():
     return jsonify({"message": "Usuario no encontrado"}), 404
 
 
-@app.route('/api/forgot-password', methods=['POST'])
+@main_bp.route('/api/forgot-password', methods=['POST'])
 def forgot_password():
     """
     Request password reset - sends email with reset token.
@@ -263,7 +254,7 @@ def forgot_password():
     return jsonify({"message": "Si el correo está registrado, recibirás instrucciones de recuperación."})
 
 
-@app.route('/api/admin/reset-password/<user_id>', methods=['POST'])
+@main_bp.route('/api/admin/reset-password/<user_id>', methods=['POST'])
 @token_required
 def admin_reset_password(user_id):
     """
@@ -297,7 +288,7 @@ def admin_reset_password(user_id):
     return jsonify({"message": f"Contraseña de {target_user.name} restablecida. Deberá cambiarla en su próximo inicio de sesión."})
 
 
-@app.route('/api/admin/resend-invitation/<user_id>', methods=['POST'])
+@main_bp.route('/api/admin/resend-invitation/<user_id>', methods=['POST'])
 @token_required
 def admin_resend_invitation(user_id):
     """
@@ -371,41 +362,103 @@ def admin_resend_invitation(user_id):
 
 # --- ENDPOINTS DE INVENTARIO ---
 
-@app.route('/api/inventory', methods=['GET'])
+@main_bp.route('/api/inventory', methods=['GET'])
 @token_required
 def get_inventory():
     db = get_db()
-    parts = db.query(AviationPart).all()
-    return jsonify([part_to_camel_dict(p) for p in parts])
+    
+    # Optimized Streaming Response for Large Datasets
+    # Prevents Gunicorn WorkerTimeout on large payloads
+    def generate():
+        yield '['
+        is_first = True
+        
+        # Use yield_per to fetch in chunks from DB cursor server-side
+        # 500 items per batch to keep memory profile low
+        query = db.query(AviationPart).yield_per(500)
+        
+        for part in query:
+            if not is_first:
+                yield ','
+            is_first = False
+            yield json.dumps(part_to_camel_dict(part))
+        yield ']'
 
-@app.route('/api/inventory', methods=['POST'])
+    return Response(generate(), mimetype='application/json')
+
+@main_bp.route('/api/inventory', methods=['POST'])
 @token_required
 def save_inventory():
+    """ Atomic Inventory Synchronization (High Integrity) """
     data = request.json
+    if not isinstance(data, list):
+         return jsonify({"message": "Expected a list of items"}), 400
+         
     db = get_db()
-    for part_data_camel in data:
-        part_data = {to_snake_case(k): v for k, v in part_data_camel.items()}
-        part_id = part_data.get('id')
-        part = db.query(AviationPart).filter(AviationPart.id == part_id).first()
-        if not part: 
-            part = AviationPart(id=part_id)
-            db.add(part)
-        for key, value in part_data.items():
-            if hasattr(part, key): 
-                setattr(part, key, value)
-    db.commit()
-    return jsonify({"message": "Inventario sincronizado."})
+    current_user_name = getattr(request, 'user_name', 'unknown')
+    try:
+        updated_count = 0
+        created_count = 0
+        
+        for part_data_camel in data:
+            # Convert keys to snake_case
+            part_data = {to_snake_case(k): v for k, v in part_data_camel.items()}
+            
+            # Architect's Validation: PN and SN are mandatory for sync
+            pn = part_data.get('pn')
+            sn = part_data.get('sn')
+            if not pn or not sn:
+                logger.warning(f"Incomplete data for item in sync: P/N={pn}, S/N={sn}. Skipping.")
+                continue
+                
+            # Business Key Lookup: PN + SN
+            part = db.query(AviationPart).filter(
+                AviationPart.pn == pn, 
+                AviationPart.sn == sn
+            ).first()
+            
+            if not part: 
+                # If not found by PN/SN, check if ID was provided and use it
+                part_id = part_data.get('id') or f"PART-{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
+                part = AviationPart(id=part_id)
+                db.add(part)
+                created_count += 1
+            else:
+                updated_count += 1
+            
+            # Safe Update
+            for key, value in part_data.items():
+                if hasattr(part, key) and key != 'id': # Never overwrite primary key
+                    setattr(part, key, value)
+        
+        db.commit()
+        logger.info(f"Inventory synced by {current_user_name}: {created_count} created, {updated_count} updated.")
+        return jsonify({"message": "Inventario sincronizado exitosamente.", "created": created_count, "updated": updated_count})
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"CRITICAL: Save Inventory Failed for user {current_user_name}: {str(e)}")
+        try:
+            from .utils.normalization import send_critical_alert
+            send_critical_alert(
+                "Inventory Sync Failure", 
+                f"Critical failure during high-integrity inventory sync for user {current_user_name}.\nError: {e}",
+                component="Inventory:Save",
+                error=e
+            )
+        except: pass
+        return jsonify({"message": "Error crítico al guardar inventario.", "error": str(e)}), 500
 
 # --- ENDPOINTS DE GESTIÓN (ADMIN) ---
 
-@app.route('/api/users', methods=['GET'])
+@main_bp.route('/api/users', methods=['GET'])
 @token_required
 def get_users():
     db = get_db()
     users = db.query(User).all()
     return jsonify([user_to_dict(u) for u in users])
 
-@app.route('/api/users', methods=['POST'])
+@main_bp.route('/api/users', methods=['POST'])
 @token_required
 def create_user():
     data = request.json
@@ -473,7 +526,7 @@ def create_user():
 
     return jsonify({"user": user_to_dict(new_user), "email_status": email_status}), 201
 
-@app.route('/api/users/<string:user_id>', methods=['PUT'])
+@main_bp.route('/api/users/<string:user_id>', methods=['PUT'])
 @token_required
 def update_user(user_id):
     data = request.json
@@ -489,7 +542,7 @@ def update_user(user_id):
     db.commit()
     return jsonify(user_to_dict(user))
 
-@app.route('/api/users/<string:user_id>', methods=['DELETE'])
+@main_bp.route('/api/users/<string:user_id>', methods=['DELETE'])
 @token_required
 def delete_user(user_id):
     db = get_db()
@@ -501,12 +554,12 @@ def delete_user(user_id):
     db.commit()
     return jsonify({"message": "Usuario eliminado"}), 200
 
-@app.route('/api/users/generate-password', methods=['GET'])
+@main_bp.route('/api/users/generate-password', methods=['GET'])
 @token_required
 def get_secure_password():
     return jsonify({"password": generate_secure_password()})
 
-@app.route('/api/send-email', methods=['POST'])
+@main_bp.route('/api/send-email', methods=['POST'])
 @token_required
 def handle_send_email():
     data = request.json
@@ -531,7 +584,7 @@ def handle_send_email():
     logger.error(f"Email failed to {recipient}: {message}")
     return jsonify({"message": message, "logs": logs}), 500
 
-@app.route('/api/users/setup-password', methods=['POST'])
+@main_bp.route('/api/users/setup-password', methods=['POST'])
 def setup_password():
     data = request.json
     token = data.get('token')
@@ -560,7 +613,7 @@ def setup_password():
 
 # --- ENDPOINTS DE CONFIGURACIÓN Y MANTENIMIENTO ---
 
-@app.route('/api/email-config', methods=['GET', 'POST'])
+@main_bp.route('/api/email-config', methods=['GET', 'POST'])
 @token_required
 def email_config():
     if request.method == 'POST':
@@ -569,7 +622,7 @@ def email_config():
         return jsonify({"message": "Configuración guardada."})
     return jsonify(server_email.load_config())
 
-@app.route('/api/email-test', methods=['POST'])
+@main_bp.route('/api/email-test', methods=['POST'])
 @token_required
 def email_test():
     db = get_db()
@@ -599,7 +652,7 @@ def email_test():
         "logs": logs
     })
 
-@app.route('/api/db-backup', methods=['GET'])
+@main_bp.route('/api/db-backup', methods=['GET'])
 @token_required
 def db_backup():
     db = get_db()
@@ -610,7 +663,7 @@ def db_backup():
         json.dump(backup_data, f, indent=2)
     return send_file(backup_file, as_attachment=True)
 
-@app.route('/api/db-optimize', methods=['POST'])
+@main_bp.route('/api/db-optimize', methods=['POST'])
 @token_required
 def db_optimize():
     db = get_db()
@@ -623,7 +676,7 @@ def db_optimize():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- ENDPOINTS DE IA Y ESTADÍSTICAS ---
-@app.route('/api/stats', methods=['GET'])
+@main_bp.route('/api/stats', methods=['GET'])
 @token_required
 def get_stats():
     db = get_db()
@@ -631,7 +684,7 @@ def get_stats():
     by_loc = db.query(AviationPart.location, func.count(AviationPart.id)).group_by(AviationPart.location).all()
     return jsonify({"by_tag": dict(by_tag), "by_location": dict(by_loc)})
 
-@app.route('/api/stats/brands', methods=['GET'])
+@main_bp.route('/api/stats/brands', methods=['GET'])
 @token_required
 def get_brand_stats():
     db = get_db()
@@ -642,7 +695,7 @@ def get_brand_stats():
         .limit(10).all()
     return jsonify(dict(brand_stats))
 
-@app.route('/api/stats/location-breakdown', methods=['GET'])
+@main_bp.route('/api/stats/location-breakdown', methods=['GET'])
 @token_required
 def get_location_breakdown():
     location = request.args.get('loc')
@@ -666,7 +719,7 @@ def get_location_breakdown():
         "breakdown": dict(breakdown)
     })
 
-@app.route('/api/stats/type-breakdown', methods=['GET'])
+@main_bp.route('/api/stats/type-breakdown', methods=['GET'])
 @token_required
 def get_type_breakdown():
     part_type = request.args.get('name')
@@ -690,7 +743,7 @@ def get_type_breakdown():
         "breakdown": dict(breakdown)
     })
 
-@app.route('/api/stock-lookup', methods=['GET'])
+@main_bp.route('/api/stock-lookup', methods=['GET'])
 @token_required
 def stock_lookup():
     part_number = request.args.get('pn')
@@ -718,7 +771,7 @@ def stock_lookup():
 
 # --- ENDPOINTS DE CONTACTOS ---
 
-@app.route('/api/contacts', methods=['GET'])
+@main_bp.route('/api/contacts', methods=['GET'])
 @token_required
 def get_contacts():
     db = get_db()
@@ -731,7 +784,7 @@ def get_contacts():
         "role": c.role
     } for c in contacts])
 
-@app.route('/api/contacts', methods=['POST'])
+@main_bp.route('/api/contacts', methods=['POST'])
 @token_required
 def create_contact():
     data = request.json
@@ -767,7 +820,7 @@ def create_contact():
         }
     }), 201
 
-@app.route('/api/contacts/<contact_id>', methods=['DELETE'])
+@main_bp.route('/api/contacts/<contact_id>', methods=['DELETE'])
 @token_required
 def delete_contact(contact_id):
     db = get_db()
@@ -778,5 +831,9 @@ def delete_contact(contact_id):
     db.delete(contact)
     db.commit()
     return jsonify({"message": "Contacto eliminado"}), 200
+
+# GLOBAL APP INSTANCE (For Gunicorn)
+app = create_app()
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

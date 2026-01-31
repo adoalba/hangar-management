@@ -152,3 +152,19 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
         error_msg = f"Fallo en el protocolo de correo: {str(e)}"
         log(error_msg)
         return False, error_msg
+
+def send_email_with_attachment(recipient, subject, html_body, filename, content, mimetype):
+    """
+    Helper function for backwards compatibility with reports.py
+    """
+    cfg = load_config()
+    files = [{
+        'filename': filename,
+        'content': content,
+        'mimetype': mimetype
+    }]
+    success, message = send_via_smtp(cfg, recipient, subject, html_body, files=files)
+    if not success:
+        logger.error(f"Email failed: {message}")
+        raise Exception(message)
+    return success

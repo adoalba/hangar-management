@@ -16,7 +16,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, user, onLogout,
   const menuItems = [
     { id: 'INVENTORY', icon: ICONS.Inventory, label: t.inventory, roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
     { id: 'HANGAR', icon: ICONS.Plus, label: t.add_part, roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
-    { id: 'REPORTS', icon: ICONS.Spreadsheet, label: t.reports || 'Reportes', roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
+    { id: 'REPORTS', icon: ICONS.Spreadsheet, label: t.reports || 'Reports', roles: [UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.VIEWER] },
     { id: 'SCAN', icon: ICONS.Scan, label: 'Scanner', roles: [UserRole.ADMIN, UserRole.TECHNICIAN] },
     { id: 'QR_LABELS', icon: ICONS.QrCode, label: 'QR', roles: [UserRole.ADMIN] },
     { id: 'USERS', icon: ICONS.Users, label: t.users, roles: [UserRole.ADMIN] },

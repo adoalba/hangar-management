@@ -38,6 +38,20 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
     // 1. API: Network Only (Critico para tiempo real)
+    // EXCEPTION: Archives List (Offline Access)
+    if (url.pathname.includes('/api/reports/v2/archives')) {
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    const clone = response.clone();
+                    caches.open('wca-archives-v1').then((cache) => cache.put(event.request, clone));
+                    return response;
+                })
+                .catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
     if (url.pathname.startsWith('/api/')) {
         return;
     }

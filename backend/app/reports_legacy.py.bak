@@ -1,0 +1,2639 @@
+# --- ROBUST IMPORTS ---
+import os
+import io
+import shutil
+import logging
+import base64
+import json
+from datetime import datetime
+from flask import send_file, Response, jsonify, Blueprint
+
+# Industrial Grade Logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+from .config import Paths
+from .storage_service import UnifiedArchiveService
+from .utils.auth import token_required as token_required_reports
+
+# --- BLUEPRINT INITIALIZATION (MUST BE TOP LEVEL) ---
+reports_bp = Blueprint('reports', __name__, url_prefix='/api/reports')
+
+# ReportLab Imports
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4, landscape, portrait
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepTogether, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, cm
+from reportlab.pdfgen import canvas
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+
+# OpenPyXL Imports
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+# Application Imports
+from .models import AviationPart, User, SessionLocal
+from .server_email import send_email_with_attachment
+
+
+def get_report_branding():
+    try:
+        # Load branding logic
+        return {
+            'companyName': 'World Class Aviation',
+            'primaryColor': '#b8860b',
+            'footerText': 'Privileged Technical Record | FAA/EASA Compliance'
+        }
+    except Exception as e:
+        logger.error(f"Branding Error: {e}")
+        return {}
+
+# 3-LEVEL EXCEPTION HANDLING WRAPPER (CENTRALIZED DISPATCHER)
+def industrial_report_handler(report_id, filename, file_format, category, logic_func, delivery_method="Download", **kwargs):
+    """
+    FUNNEL PATTERN: Centralized Report Dispatcher.
+    Wraps report generation in a 3-level safety net.
+    
+    Args:
+        report_id: Unique Report ID
+        filename: Target filename
+        file_format: 'PDF', 'XLSX'
+        category: Report Category (e.g. 'TOTAL_INVENTORY')
+        logic_func: Callable that returns a BytesIO buffer
+        delivery_method: 'Download' or 'Email'
+        **kwargs: Extra metadata for logging
+    """
+    try:
+        # LEVEL 1: GENERATION LOGIC
+        logger.info(f"[REPORT] ID: {report_id} | Format: {file_format} | Stage: GENERATION")
+        file_buffer = logic_func()
+        
+        # LEVEL 2: PERSISTENCE (Try Disk, Fallback to RAM)
+        disk_success = False
+        try:
+            # Use UnifiedService which uses Paths implicitly or explicitly
+            UnifiedArchiveService.persist_report(
+                file_buffer, 
+                filename, 
+                file_format, 
+                category, 
+                delivery_method
+            )
+            disk_success = True
+        except Exception as disk_error:
+            logger.error(f"LEVEL 2 ERROR: Disk write failed for {filename}. Serving from RAM. Details: {disk_error}")
+            # Do NOT raise. Continue to serve file_buffer.
+
+        logger.info(f"[REPORT] ID: {report_id} | Format: {file_format} | Disk Success: {disk_success}")
+
+        # LEVEL 3: ENTREGA (Delivery)
+        file_buffer.seek(0)
+        return send_file(
+            file_buffer,
+            as_attachment=True,
+            download_name=f"{filename}.{file_format.lower()}",
+            mimetype='application/pdf' if file_format == 'PDF' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as critical_error:
+        # LEVEL 3: CRITICAL FAILURE
+        logger.critical(f"LEVEL 3 CRITICAL: Report Generation Failed Completely. ID: {report_id}. Error: {critical_error}", exc_info=True)
+        return jsonify({
+            "error": "CRITICAL_REPORT_FAILURE",
+            "message": "The report generation subsystem encountered a fatal error.",
+            "report_id": report_id,
+            "technical_details": str(critical_error),
+            "timestamp": datetime.utcnow().isoformat()
+        }), 500
+
+# ... (Update route handlers to use industrial_report_handler) ...
+
+@reports_bp.route('/download-pdf/<report_id>', methods=['GET'])
+@token_required_reports
+def download_report_pdf(report_id):
+    """
+    Downloads a PDF report via the Industrial Handler.
+    """
+    try:
+        # 1. Fetch Snapshot
+        db = get_db()
+        snapshot = db.query(ReportSnapshot).filter(ReportSnapshot.id == report_id).first()
+        
+        # 404 Safety
+        if not snapshot:
+             logger.warning(f"Report ID {report_id} not found in snapshots.")
+             return jsonify({'message': 'Report not found'}), 404
+             
+        data = snapshot.content_snapshot
+        report_type = snapshot.report_type
+        
+        # 2. Define Logic Closure
+        def pdf_logic():
+             # Uses existing generator in this file
+             return generate_pdf_report(data)
+
+        # 3. Dispatch via Industrial Funnel
+        return industrial_report_handler(
+            report_id=report_id,
+            filename=f"{report_id}_Report",
+            file_format="PDF",
+            category=report_type,
+            logic_func=pdf_logic
+        )
+            
+    except Exception as e:
+         logger.error(f"Route Error (PDF): {e}")
+         return jsonify({'error': str(e)}), 500
+
+@reports_bp.route('/download-excel/<report_id>', methods=['GET'])
+@token_required_reports
+def download_report_excel(report_id):
+    """
+    Downloads an Excel report via the Industrial Handler.
+    """
+    try:
+        # 1. Fetch Snapshot
+        db = get_db()
+        snapshot = db.query(ReportSnapshot).filter(ReportSnapshot.id == report_id).first()
+        
+        if not snapshot:
+             return jsonify({'message': 'Report not found'}), 404
+             
+        data = snapshot.content_snapshot
+        report_type = snapshot.report_type
+        
+        # 2. Define Logic Closure
+        def excel_logic():
+             return generate_excel_report(data)
+
+        # 3. Dispatch
+        return industrial_report_handler(
+            report_id=report_id,
+            filename=f"{report_id}_Inventory",
+            file_format="XLSX",
+            category=report_type,
+            logic_func=excel_logic
+        )
+            
+    except Exception as e:
+         logger.error(f"Route Error (Excel): {e}")
+         return jsonify({'error': str(e)}), 500
+
+
+
+# ... (Previous imports) ...
+
+class HangarStorageManager:
+    """
+    Centralized Storage Manager for Aviation Reports.
+    Ensures directory compliance and safe pathing.
+    """
+    BASE_PATH = "/app/storage/archives"
+
+    @staticmethod
+    def get_report_path(report_id, card_type, date_obj=None):
+        """
+        Generates absolute path for report storage.
+        Creates parent directories if they don't exist.
+        """
+        if not date_obj:
+            date_obj = datetime.utcnow()
+            
+        # Sanitize
+        safe_card = str(card_type).upper().replace(" ", "_")
+        year = date_obj.strftime("%Y")
+        month = date_obj.strftime("%m")
+        
+        # Structure: /app/storage/archives/{CARD_TYPE}/{YYYY}/{MM}/
+        storage_dir = os.path.join(HangarStorageManager.BASE_PATH, safe_card, year, month)
+        
+        # Ensure Directory Exists (Atomic & Thread-safe usually, but strict check)
+        os.makedirs(storage_dir, exist_ok=True)
+        
+        # Absolute File Path
+        filename = f"{report_id}.pdf"
+        full_path = os.path.join(storage_dir, filename)
+        
+        return full_path
+
+# --- BLUEPRINT DEFINITION (MOVED TO TOP) ---
+# reports_bp definition removed from here
+
+
+# ... (Helpers like get_db) ...
+
+
+
+# --- HELPERS ---
+
+def get_db():
+    """Get database session from Flask g context."""
+    if 'db' not in g:
+        g.db = SessionLocal()
+    return g.db
+
+
+def generate_report_id():
+    """Generate unique aviation-compliant report ID."""
+    date_str = datetime.utcnow().strftime('%Y%m%d')
+    unique_suffix = uuid.uuid4().hex[:6].upper()
+    return f"RPT-{date_str}-{unique_suffix}"
+
+
+# --- STATUS TERMINOLOGY MAPPING ---
+STATUS_DISPLAY_MAP = {
+    'YELLOW': 'Serviceable Material',
+    'GREEN': 'Repairable Material',
+    'WHITE': 'Removed – No Defect',
+    'RED': 'Rejected Material'
+}
+
+# --- STRICT VISUAL CONTRACT CONFIGURATION ---
+REPORT_COLUMN_CONFIG = {
+    'TOTAL_INVENTORY': [
+        ('statusLabel', 'Status'),
+        ('pn', 'Part Number'),
+        ('sn', 'Serial Number'),
+        ('partName', 'Description'),
+        ('brand', 'Brand'),
+        ('model', 'Model'),
+        ('location', 'Location'),
+        ('physicalStorageLocation', 'Bin/Shelf'),
+        ('registrationDate', 'Reg. Date'),
+        ('tat', 'TAT/T.T'),
+        ('tso', 'TSO'),
+        ('trem', 'T.REM'),
+        ('shelfLife', 'Shelf Life'),
+        ('tc', 'T.C.'),
+        ('cso', 'CSO'),
+        ('crem', 'C.REM'),
+        ('organization', 'Organization'),
+        ('company_address', 'Address'),
+        ('company_phone', 'Phone'),
+        ('company_email', 'Email'),
+        ('technician_name', 'Tech Name'),
+        ('technician_license', 'Tech Lic.'),
+        ('inspector_name', 'Insp. Name'),
+        ('inspector_license', 'Insp. Lic.'),
+        ('removalReason', 'Removal Reason'),
+        ('rejectionReason', 'Rejection Reason'),
+        ('finalDisposition', 'Disposition'),
+        ('observations', 'Observations'),
+        ('technicalReport', 'Technical Report'),
+        ('id', 'System ID')
+    ],
+    'BY_STATUS': [
+        ('statusLabel', 'Status'),
+        ('pn', 'Part Number'),
+        ('sn', 'Serial Number'),
+        ('partName', 'Description'),
+        ('brand', 'Brand'),
+        ('model', 'Model'),
+        ('location', 'Location'),
+        ('physicalStorageLocation', 'Bin/Shelf'),
+        ('registrationDate', 'Reg. Date'),
+        ('tat', 'TAT/T.T'),
+        ('tso', 'TSO'),
+        ('trem', 'T.REM'),
+        ('shelfLife', 'Shelf Life'),
+        ('tc', 'T.C.'),
+        ('cso', 'CSO'),
+        ('crem', 'C.REM'),
+        ('technician_name', 'Tech Name'),
+        ('inspector_name', 'Insp. Name'),
+        ('removalReason', 'Removal Reason'),
+        ('rejectionReason', 'Rejection Reason'),
+        ('observations', 'Observations')
+    ],
+    'BY_LOCATION': [
+        ('location', 'Location'),
+        ('statusLabel', 'Status'),
+        ('pn', 'Part Number'),
+        ('sn', 'Serial Number'),
+        ('partName', 'Description'),
+        ('brand', 'Brand'),
+        ('model', 'Model'),
+        ('physicalStorageLocation', 'Bin/Shelf'),
+        ('registrationDate', 'Reg. Date'),
+        ('tat', 'TAT/T.T'),
+        ('trem', 'T.REM'),
+        ('shelfLife', 'Shelf Life'),
+        ('observations', 'Observations')
+    ],
+    'BY_PART_NUMBER': [
+        ('pn', 'Part Number'),
+        ('statusLabel', 'Status'),
+        ('sn', 'Serial Number'),
+        ('partName', 'Description'),
+        ('brand', 'Brand'),
+        ('location', 'Location'),
+        ('tat', 'TAT/T.T'),
+        ('tso', 'TSO'),
+        ('trem', 'T.REM'),
+        ('shelfLife', 'Shelf Life'),
+        ('tc', 'T.C.'),
+        ('cso', 'CSO'),
+        ('crem', 'C.REM'),
+        ('observations', 'Observations')
+    ]
+}
+
+def format_report_items(items, report_type):
+    """
+    Architectural Formatter: Guarantees EXACT SAME columns and order for ALL reports.
+    Source of Truth: REPORT_COLUMN_CONFIG
+    """
+    config = REPORT_COLUMN_CONFIG.get(report_type, [])
+    if not config:
+        # Fallback to keys of first item if config missing (fail-safe)
+        if items:
+            keys = sorted(items[0].keys())
+            config = [(k, k.replace('_', ' ').title()) for k in keys]
+        else:
+            config = [('status', 'Status'), ('pn', 'P/N'), ('partName', 'Part Name')]
+
+    columns = [{"key": k, "label": l} for k, l in config]
+    rows = []
+    
+    if not items:
+        # Task 4: Failure Safety - Empty structure
+        return {
+            "columns": columns,
+            "rows": [],
+            "meta": {"reportType": report_type, "rowCount": 0, "empty": True}
+        }
+
+    for item in items:
+        row = {}
+        for key, _ in config:
+            val = item.get(key, '—')
+            # Consistent formatting (Date/None)
+            if val is None: val = '—'
+            elif isinstance(val, (int, float)) and not isinstance(val, bool):
+                val = str(val)
+            row[key] = val
+        rows.append(row)
+
+    return {
+        "columns": columns,
+        "rows": rows,
+        "meta": {
+            "reportType": report_type,
+            "rowCount": len(rows),
+            "empty": False
+        }
+    }
+
+
+# --- ENTERPRISE BRANDING CONFIGURATION ---
+REPORT_BRANDING = {
+    'companyName': 'World Class Aviation',
+    'logoPath': '/home/adolfo/Documents/Projects/hangar-management/backend/assets/logo.png',
+    'primaryColor': colors.Color(0.72, 0.52, 0.04), # #b8860b Dark Gold
+    'secondaryColor': colors.black,
+    'footerText': 'Privileged Technical Record | World Class Aviation Logistics Terminal | FAA/EASA Compliance Support',
+    'accentColor': colors.Color(0.12, 0.16, 0.23) # #1e293b Slate/Black
+}
+
+def get_report_branding():
+    """Helper to return branding as serializable dict."""
+    return {
+        'companyName': REPORT_BRANDING['companyName'],
+        'primaryColor': '#b8860b',
+        'footerText': REPORT_BRANDING['footerText']
+    }
+
+
+# --- MIDDLEWARE FOR TOKEN (MOVED UP) ---
+def get_current_user():
+    """Get current user from request context (set by token_required)."""
+    from .models import User
+    db = get_db()
+    user_id = getattr(request, 'user_id', None)
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        return user.name if user else 'Unknown'
+    return 'Unknown'
+
+
+def token_required_reports(f):
+    """Token validation decorator for reports endpoints."""
+    from functools import wraps
+    from .models import UserSession
+    
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({"message": "Token de seguridad no proporcionado"}), 401
+        
+        token = auth_header.split(' ')[1]
+        db = get_db()
+        session_record = db.query(UserSession).filter(UserSession.token == token).first()
+        
+        if not session_record or session_record.expiry < datetime.utcnow():
+            if session_record:
+                db.delete(session_record)
+                db.commit()
+            return jsonify({"message": "Sesión inválida o expirada"}), 401
+        
+        request.user_id = session_record.user_id
+        return f(*args, **kwargs)
+    return decorated
+
+
+def apply_common_filters(query, args):
+    """
+    Apply cross-filtering parameters to query.
+    
+    Supported filters:
+    - location: comma-separated list of locations
+    - status: comma-separated list of tag colors (YELLOW,GREEN,WHITE,RED)
+    - date_from / date_to: date range for registration_date
+    - category: free-text search on part_name (future: dedicated category field)
+    """
+    # Location filter (multi-select)
+    locations = args.get('location')
+    if locations and locations.lower() not in ['all', 'todos', '']:
+        loc_list = [loc.strip() for loc in locations.split(',') if loc.strip()]
+        if loc_list:
+            query = query.filter(func.lower(AviationPart.location).in_(
+                [loc.lower() for loc in loc_list]
+            ))
+    
+    # Status/Tag Color filter
+    statuses = args.get('status')
+    if statuses and statuses.lower() not in ['all', 'todos', '']:
+        status_list = [s.strip().upper() for s in statuses.split(',') if s.strip()]
+        if status_list:
+            query = query.filter(AviationPart.tag_color.in_(status_list))
+    
+    # Date range filter
+    date_from = args.get('date_from')
+    date_to = args.get('date_to')
+    if date_from and date_from.strip():
+        query = query.filter(AviationPart.registration_date >= date_from)
+    if date_to and date_to.strip():
+        query = query.filter(AviationPart.registration_date <= date_to)
+    
+    # Category filter (text search on part_name)
+    category = args.get('category')
+    if category and category.lower() not in ['all', 'todos', '']:
+        cat_list = [c.strip() for c in category.split(',') if c.strip()]
+        if cat_list:
+            conditions = [AviationPart.part_name.ilike(f'%{cat}%') for cat in cat_list]
+            query = query.filter(or_(*conditions))
+    
+    return query
+
+
+def part_to_report_dict(part):
+    """Convert AviationPart model to dictionary for reports (with Snipet compatibility)."""
+    return {
+        'id': part.id,
+        'tagColor': part.tag_color,
+        'status': part.tag_color,        # Alias per user snippet (Internal Logic)
+        'statusLabel': STATUS_DISPLAY_MAP.get(part.tag_color, part.tag_color), # Display Text
+        'partName': part.part_name,
+        'description': part.part_name,    # Alias per user snippet
+        'brand': part.brand,
+        'model': part.model,
+        'pn': part.pn,
+        'sn': part.sn,
+        'ttTat': part.tt_tat,
+        'tat': part.tt_tat,               # Alias per user snippet
+        'tso': part.tso,
+        'trem': part.trem,
+        'tc': part.tc,
+        'cycles': part.tc,                # Alias per user snippet
+        'cso': part.cso,
+        'crem': part.crem,
+        'registrationDate': part.registration_date,
+        'location': part.location,
+        'organization': part.organization,
+        'shelfLife': part.shelf_life,
+        'removalReason': part.removal_reason,
+        'technicalReport': part.technical_report,
+        'removedFromAc': part.removed_from_ac,
+        'position': part.position,
+        'physicalStorageLocation': part.physical_storage_location,
+        'rejectionReason': part.rejection_reason,
+        'finalDisposition': part.final_disposition,
+        'observations': part.observations,
+        'technicianName': part.technician_name,
+        'technicianLicense': part.technician_license,
+        'inspectorName': part.inspector_name,
+        'inspectorLicense': part.inspector_license,
+        'signedByTechnician': part.signed_by_technician,
+        'signedByInspector': part.signed_by_inspector,
+    }
+
+
+# Normalization logic moved to app.utils.normalization
+
+
+def create_snapshot(report_id, report_type, data, user_name):
+    """Create immutable snapshot in database."""
+    try:
+        db = get_db()
+        # Calculate row count based on data type
+        row_count = "0"
+        if isinstance(data, list):
+             row_count = str(len(data))
+        elif isinstance(data, dict):
+             # For grouped data/complex responses, try to find a total or count items
+             if 'summary' in data and 'total' in data['summary']:
+                 row_count = str(data['summary']['total'])
+             elif 'items' in data:
+                 row_count = str(len(data['items']))
+        
+        snapshot = ReportSnapshot(
+            id=report_id,
+            report_type=report_type,
+            content_snapshot=data,
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=7),
+            created_by=user_name,
+            row_count=row_count
+        )
+        db.add(snapshot)
+        db.commit()
+        return snapshot
+    except Exception as e:
+        print(f"FAILED TO CREATE SNAPSHOT: {e}")
+        db.rollback()
+        return None
+
+
+
+def get_filtered_inventory(filters):
+    """
+    Helper to fetch inventory based on JSON filters.
+    Adapts JSON dictionary to apply_common_filters (which expects dict-like args).
+    Includes defensive guarding against type mismatches (List vs String).
+    """
+    try:
+        db = get_db()
+        query = db.query(AviationPart)
+        
+        # Defensive Copy & Sanitization
+        safe_filters = filters.copy() if filters else {}
+        
+        # 1. Sanitize Location (List -> String)
+        loc = safe_filters.get('location')
+        if isinstance(loc, list):
+            safe_filters['location'] = ",".join([str(x) for x in loc if x])
+        elif loc is None:
+            safe_filters['location'] = ""
+            
+        # 2. Sanitize Status (List -> String)
+        stat = safe_filters.get('status')
+        if isinstance(stat, list):
+            safe_filters['status'] = ",".join([str(x) for x in stat if x])
+        elif stat is None:
+            safe_filters['status'] = ""
+
+        # 3. Sanitize Category (List -> String)
+        cat = safe_filters.get('category')
+        if isinstance(cat, list):
+            safe_filters['category'] = ",".join([str(x) for x in cat if x])
+        elif cat is None:
+            safe_filters['category'] = ""
+            
+        # Apply Logic
+        query = apply_common_filters(query, safe_filters)
+        
+        # Default Sort
+        query = query.order_by(AviationPart.registration_date.desc())
+        
+        return query.all()
+    except Exception as e:
+        # ABSOLUTE SAFETY: If filtering fails, return empty list (or all? Empty is safer to avoid leaks)
+        print(f"FILTER ERROR: {e}")
+        return []
+
+@reports_bp.route('/generate', methods=['POST'])
+@token_required_reports
+def generate_report():
+    """
+    Unified endpoint to generate reports.
+    1. Validates filters
+    2. Executes query
+    3. Creates Snapshot
+    4. Returns Preview + ID
+    """
+    request_data = request.json
+    report_type = request_data.get('reportType', 'TOTAL_INVENTORY')
+    filters = request_data.get('filters', {})
+    page = request_data.get('page', 1)
+    page_size = request_data.get('pageSize', 50)
+    
+    user_name = get_current_user()
+    
+    # 1. FETCH DATA (Backend Logic)
+    # Reuse existing filter logic
+    inventory = get_filtered_inventory(filters)
+    
+    # Process based on Report Type
+    full_data = [item.to_dict() for item in inventory]
+    structured_data = {}
+    
+    if report_type == 'TOTAL_INVENTORY':
+        structured_data = {'items': full_data}
+        
+    elif report_type == 'BY_STATUS':
+        # Server-side Grouping
+        groups = {'RED': [], 'YELLOW': [], 'GREEN': [], 'WHITE': []}
+        for item in full_data:
+            tag = item.get('tagColor', 'WHITE')
+            if tag in groups:
+                groups[tag].append(item)
+            else:
+                groups.setdefault(tag, []).append(item)
+        structured_data = {'groups': groups}
+        
+    elif report_type == 'BY_LOCATION':
+        # Server-side Grouping
+        groups = {}
+        for item in full_data:
+            loc = item.get('location') or 'Unknown'
+            if loc not in groups:
+                groups[loc] = []
+            groups[loc].append(item)
+        # Sort keys
+        structured_data = {'groups': dict(sorted(groups.items()))}
+        
+    elif report_type == 'BY_PN':
+        pn = filters.get('pnSearch')
+        if not pn:
+            return jsonify({'message': 'Part Number required for this report'}), 400
+        # Strict filtering
+        filtered_items = [item for item in full_data if pn.lower() in (item.get('pn') or '').lower()]
+        structured_data = {
+            'items': filtered_items,
+            'partInfo': { # Include generic info from first match
+                'pn': pn,
+                'partName': filtered_items[0].get('partName') if filtered_items else '',
+            }
+        }
+        # Update full_data for summary calc
+        full_data = filtered_items
+
+    # Calculate Summary
+    total_items = len(full_data)
+    status_counts = {'YELLOW': 0, 'GREEN': 0, 'WHITE': 0, 'RED': 0}
+    for item in full_data:
+        tag = item.get('tagColor')
+        if tag in status_counts:
+            status_counts[tag] += 1
+            
+    summary = {
+        'total': total_items,
+        'byStatus': status_counts
+    }
+
+    # 2. CREATE SNAPSHOT (Immutable View Model)
+    report_id = generate_report_id()
+    
+    snapshot_payload = {
+        'reportId': report_id,
+        'reportType': report_type,
+        'generatedAt': datetime.utcnow().isoformat() + 'Z',
+        'generatedBy': user_name,
+        'filtersApplied': filters,
+        'items': full_data,          # [FLAT] Source for PDF/CSV/Excel generators
+        'viewModel': structured_data, # [STRUCTURED] Source for Frontend rendering
+        'summary': summary
+    }
+    
+    # Update create_snapshot to handle this structure? 
+    # create_snapshot logic uses 'summary.total' or 'items', so it should be fine if we keep summary.
+    create_snapshot(
+        report_id,
+        report_type,
+        snapshot_payload,
+        user_name
+    )
+
+    # 3. PREPARE RESPONSE (Paginated or Full Structure)
+    # Ideally for detailed reports we might just return the whole structure if it's not huge,
+    # or just return the ID and let frontend fetch/preview.
+    # User requirement: "Return: reportId, preview de datos paginado, summary"
+    
+    # For grouped data, pagination is complex. 
+    # Simplification: Return first N items from the flattened list for preview table.
+    preview_items = full_data[:page_size]
+    
+    return jsonify({
+        'reportId': report_id,
+        'structure': 'GROUPED' if 'groups' in structured_data else 'FLAT',
+        'previewItems': preview_items, # Flat list for table view
+        # Map to Frontend Interface (ReportData)
+        'data': structured_data.get('items'), # Maps to AviationPart[] or null
+        'groupedData': structured_data.get('groups'), # Maps to Record<string, AviationPart[]> or null
+        'summary': summary,
+    })
+
+
+
+def log_report_activity(activity_type, report_id, report_type, filters, details=None):
+    """
+    Log report related activity to database for audit trail.
+    
+    Args:
+        activity_type: 'GENERATE', 'DOWNLOAD_PDF', 'DOWNLOAD_EXCEL', 'EMAIL'
+        report_id: The ID of the report
+        report_type: Category (TOTAL_INVENTORY, BY_STATUS, etc)
+        filters: JSON serializable dict of filters applied
+        details: Optional string with extra info (e.g. recipient email)
+    """
+    try:
+        user_id = getattr(request, 'user_id', 'system')
+        db = get_db()
+        
+        # Get user name for denormalization
+        from .models import User
+        user = db.query(User).filter(User.id == user_id).first()
+        user_name = user.name if user else 'Unknown'
+        
+        # Create log entry
+        new_log = ReportLog(
+            id=str(uuid.uuid4()),
+            report_id=report_id,
+            report_type=report_type,
+            user_id=user_id,
+            user_name=user_name,
+            acknowledge_timestamp=datetime.utcnow(), # Used as created_at for action log
+            device_fingerprint=request.headers.get('User-Agent', 'unknown')[:255],
+            recipient_email=details if activity_type == 'EMAIL' else None,
+            item_count=str(activity_type), # Overloading field for action type if schema is rigid
+            filters_applied=filters,
+            status=activity_type, # Using status field for Action Type
+            created_at=datetime.utcnow()
+        )
+        
+        db.add(new_log)
+        db.commit()
+    except Exception as e:
+        print(f"FAILED TO LOG AUDIT: {e}") # Fallback to stdout
+
+
+
+
+
+# --- REPORT ENDPOINTS ---
+
+@reports_bp.route('/inventory', methods=['GET'])
+@token_required_reports
+def report_total_inventory():
+    """ Full Inventory Report (Hardened) """
+    report_id = generate_report_id()
+    try:
+        db = get_db()
+        query = db.query(AviationPart)
+        query = apply_common_filters(query, request.args)
+        
+        # Order by registration date descending
+        query = query.order_by(AviationPart.registration_date.desc())
+        
+        parts = query.all()
+        data = [part_to_report_dict(p) for p in parts]
+        
+        # Build ViewModel with groupings per user snippet
+        view_model = {
+            "groupsByStatus": {},
+            "groupsByLocation": {}
+        }
+        for item in data:
+            status = item.get('status', 'N/A')
+            location = item.get('location', 'Sin Ubicación')
+            view_model["groupsByStatus"].setdefault(status, []).append(item)
+            view_model["groupsByLocation"].setdefault(location, []).append(item)
+
+        filters = {
+            'location': request.args.get('location'),
+            'status': request.args.get('status'),
+            'dateFrom': request.args.get('date_from'),
+            'dateTo': request.args.get('date_to'),
+            'category': request.args.get('category')
+        }
+        filters = {k: v for k, v in filters.items() if v}
+        
+        summary_obj = {
+            'total': len(data),
+            'byStatus': {k: len(v) for k, v in view_model["groupsByStatus"].items()},
+            'byLocation': {k: len(v) for k, v in view_model["groupsByLocation"].items()},
+            'percentages': {s: round((len(v)/len(data))*100, 2) if len(data) > 0 else 0 for s, v in view_model["groupsByStatus"].items()}
+        }
+        
+        snapshot_payload = {
+            'reportId': report_id,
+            'reportType': 'TOTAL_INVENTORY',
+            'generatedAt': datetime.utcnow().isoformat() + 'Z',
+            'generatedBy': get_current_user(),
+            'filtersApplied': filters,
+            'items': data,
+            'viewModel': view_model,
+            'summary': summary_obj
+        }
+        
+        create_snapshot(report_id, 'TOTAL_INVENTORY', snapshot_payload, get_current_user())
+        log_report_activity('GENERATE', report_id, 'TOTAL_INVENTORY', filters)
+        
+        formatted = format_report_items(data, 'TOTAL_INVENTORY')
+        
+        return jsonify({
+            'reportId': report_id,
+            'reportType': 'TOTAL_INVENTORY',
+            'title': 'Total Inventory Report',
+            'subtitle': f'Applied Filters: {filters}' if filters else 'All Records',
+            'branding': get_report_branding(),
+            'data': formatted['rows'],
+            'items': formatted['rows'],
+            'columns': formatted['columns'],
+            'groupedData': view_model,
+            'previewItems': formatted['rows'][:50],
+            'summary': summary_obj,
+            'generatedAt': snapshot_payload['generatedAt']
+        })
+    except Exception as e:
+        logger.error(f"Report Generation Error (TOTAL_INVENTORY): {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert("Report Generation Failed", f"Critical failure in report_total_inventory endpoint for {report_id}.", component="Reports:inventory", error=e)
+        return jsonify({"message": "Error interno al generar reporte de inventario total", "error": str(e)}), 500
+
+
+@reports_bp.route('/by-status', methods=['GET'])
+@token_required_reports
+def report_by_status():
+    """ Report by Card Type (Hardened) """
+    report_id = generate_report_id()
+    try:
+        db = get_db()
+        query = db.query(AviationPart)
+        query = apply_common_filters(query, request.args)
+        
+        parts = query.all()
+        
+        grouped_data = {status: [] for status in ['YELLOW', 'GREEN', 'WHITE', 'RED']}
+        for part in parts:
+            if part.tag_color in grouped_data:
+                grouped_data[part.tag_color].append(part_to_report_dict(part))
+        
+        filters = {
+            'location': request.args.get('location'),
+            'dateFrom': request.args.get('date_from'),
+            'dateTo': request.args.get('date_to'),
+            'category': request.args.get('category')
+        }
+        filters = {k: v for k, v in filters.items() if v}
+        
+        total = len(parts)
+        summary = {
+            'total': total,
+            'byStatus': {s: len(items) for s, items in grouped_data.items()},
+            'percentages': {s: round((len(items)/total)*100, 2) if total > 0 else 0 for s, items in grouped_data.items()}
+        }
+        
+        flat_items = []
+        for items in grouped_data.values():
+            flat_items.extend(items)
+            
+        snapshot_payload = {
+            'reportId': report_id,
+            'reportType': 'BY_STATUS',
+            'generatedAt': datetime.utcnow().isoformat() + 'Z',
+            'generatedBy': get_current_user(),
+            'filtersApplied': filters,
+            'items': flat_items,
+            'viewModel': {
+                'groupedData': grouped_data,
+                'summary': summary
+            },
+            'summary': summary
+        }
+        
+        create_snapshot(report_id, 'BY_STATUS', snapshot_payload, get_current_user())
+        log_report_activity('GENERATE', report_id, 'BY_STATUS', filters)
+        
+        formatted = format_report_items(flat_items, 'BY_STATUS')
+        
+        return jsonify({
+            'reportId': report_id,
+            'reportType': 'BY_STATUS',
+            'title': 'Inventory by Card Status',
+            'subtitle': f'Applied Filters: {filters}' if filters else 'All Status Groups',
+            'branding': get_report_branding(),
+            'data': formatted['rows'],
+            'items': formatted['rows'],
+            'columns': formatted['columns'],
+            'groupedData': grouped_data,
+            'previewItems': formatted['rows'][:50],
+            'summary': summary,
+            'generatedAt': snapshot_payload['generatedAt']
+        })
+    except Exception as e:
+        logger.error(f"Report Generation Error (BY_STATUS): {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert("Report Generation Failed", f"Critical failure in report_by_status for {report_id}.", component="Reports:by-status", error=e)
+        return jsonify({"message": "Error interno al generar reporte por estatus", "error": str(e)}), 500
+
+
+@reports_bp.route('/by-location', methods=['GET'])
+@token_required_reports
+def report_by_location():
+    """ Report by Location (Hardened) """
+    report_id = generate_report_id()
+    try:
+        db = get_db()
+        query = db.query(AviationPart)
+        query = apply_common_filters(query, request.args)
+        
+        parts = query.all()
+        
+        location_groups = {}
+        for part in parts:
+            loc = part.location or 'Sin Ubicación'
+            if loc not in location_groups:
+                location_groups[loc] = {
+                    'items': [],
+                    'byStatus': {'YELLOW': 0, 'GREEN': 0, 'WHITE': 0, 'RED': 0}
+                }
+            location_groups[loc]['items'].append(part_to_report_dict(part))
+            tag = part.tag_color
+            if tag in location_groups[loc]['byStatus']:
+                location_groups[loc]['byStatus'][tag] += 1
+        
+        location_summary = []
+        for loc_name, loc_data in location_groups.items():
+            location_summary.append({
+                'location': loc_name,
+                'totalItems': len(loc_data['items']),
+                'byStatus': loc_data['byStatus']
+            })
+        
+        location_summary.sort(key=lambda x: x['totalItems'], reverse=True)
+        
+        filters = {
+            'status': request.args.get('status'),
+            'dateFrom': request.args.get('date_from'),
+            'dateTo': request.args.get('date_to'),
+            'category': request.args.get('category')
+        }
+        filters = {k: v for k, v in filters.items() if v}
+        
+        flat_items = []
+        for loc_data in location_groups.values():
+            flat_items.extend(loc_data['items'])
+            
+        snapshot_payload = {
+            'reportId': report_id,
+            'reportType': 'BY_LOCATION',
+            'generatedAt': datetime.utcnow().isoformat() + 'Z',
+            'generatedBy': get_current_user(),
+            'filtersApplied': filters,
+            'items': flat_items,
+            'viewModel': {
+                'groupedData': location_groups,
+                'summary': location_summary
+            },
+            'summary': {'total': len(flat_items)}
+        }
+        
+        create_snapshot(report_id, 'BY_LOCATION', snapshot_payload, get_current_user())
+        log_report_activity('GENERATE', report_id, 'BY_LOCATION', filters)
+        
+        # Calculate global status counts for the summary
+        global_by_status = {'YELLOW': 0, 'GREEN': 0, 'WHITE': 0, 'RED': 0}
+        for part in parts:
+            if part.tag_color in global_by_status:
+                global_by_status[part.tag_color] += 1
+        
+        total_items = len(parts)
+        summary_obj = {
+            'total': total_items,
+            'totalLocations': len(location_groups),
+            'byStatus': global_by_status,
+            'percentages': {s: round((c/total_items)*100, 2) if total_items > 0 else 0 for s, c in global_by_status.items()}
+        }
+
+        # Update snapshot payload with standard summary
+        snapshot_payload['summary'] = summary_obj
+
+        formatted = format_report_items(flat_items, 'BY_LOCATION')
+        
+        return jsonify({
+            'reportId': report_id,
+            'reportType': 'BY_LOCATION',
+            'title': 'Inventory by Location',
+            'subtitle': f'Applied Filters: {filters}' if filters else 'All Locations',
+            'branding': get_report_branding(),
+            'data': formatted['rows'],
+            'items': formatted['rows'],
+            'columns': formatted['columns'],
+            'groupedData': location_groups,
+            'previewItems': formatted['rows'][:50],
+            'locationSummary': location_summary,
+            'summary': summary_obj,
+            'generatedAt': snapshot_payload['generatedAt']
+        })
+    except Exception as e:
+        logger.error(f"Report Generation Error (BY_LOCATION): {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert("Report Generation Failed", f"Critical failure in report_by_location for {report_id}.", component="Reports:by-location", error=e)
+        return jsonify({"message": "Error interno al generar reporte por ubicación", "error": str(e)}), 500
+
+
+@reports_bp.route('/by-pn/<string:part_number>', methods=['GET'])
+@token_required_reports
+def report_by_part_number(part_number):
+    """ Report by Part Number (Hardened) """
+    report_id = generate_report_id()
+    try:
+        db = get_db()
+        query = db.query(AviationPart).filter(func.lower(AviationPart.pn) == part_number.lower())
+        
+        locations = request.args.get('location')
+        if locations:
+            loc_list = [loc.strip().lower() for loc in locations.split(',') if loc.strip()]
+            if loc_list:
+                query = query.filter(func.lower(AviationPart.location).in_(loc_list))
+        
+        statuses = request.args.get('status')
+        if statuses:
+            status_list = [s.strip().upper() for s in statuses.split(',') if s.strip()]
+            if status_list:
+                query = query.filter(AviationPart.tag_color.in_(status_list))
+        
+        parts = query.all()
+        if not parts:
+            return jsonify({'error': 'P/N not found', 'message': f'Part Number "{part_number}" not found'}), 404
+            
+        part_name = parts[0].part_name
+        brand = parts[0].brand
+        model = parts[0].model
+        
+        units = []
+        status_counts = {s: 0 for s in ['YELLOW', 'GREEN', 'WHITE', 'RED']}
+        for part in parts:
+            part_dict = part_to_report_dict(part)
+            units.append(part_dict)
+            if part.tag_color in status_counts:
+                status_counts[part.tag_color] += 1
+        
+        total = len(parts)
+        summary = {
+            'totalUnits': total,
+            'byStatus': status_counts,
+            'percentages': {s: round((c/total)*100, 2) if total > 0 else 0 for s, c in status_counts.items()}
+        }
+        
+        filters = {'pn': part_number, 'location': locations, 'status': statuses}
+        filters = {k: v for k, v in filters.items() if v}
+        
+        snapshot_payload = {
+            'reportId': report_id,
+            'reportType': 'BY_PART_NUMBER',
+            'generatedAt': datetime.utcnow().isoformat() + 'Z',
+            'generatedBy': get_current_user(),
+            'filtersApplied': filters,
+            'items': units,
+            'viewModel': {
+                'partInfo': {'pn': part_number, 'partName': part_name, 'brand': brand, 'model': model},
+                'units': units,
+                'summary': summary
+            },
+            'summary': summary
+        }
+        
+        create_snapshot(report_id, 'BY_PART_NUMBER', snapshot_payload, get_current_user())
+        log_report_activity('GENERATE', report_id, 'BY_PART_NUMBER', filters)
+        
+        formatted = format_report_items(units, 'BY_PART_NUMBER')
+        
+        return jsonify({
+            'reportId': report_id,
+            'reportType': 'BY_PART_NUMBER',
+            'title': 'Inventory by Part Number',
+            'subtitle': f'Applied Filters: {filters}' if filters else 'All Parts',
+            'branding': get_report_branding(),
+            'data': formatted['rows'],
+            'items': formatted['rows'],
+            'columns': formatted['columns'],
+            'groupedData': snapshot_payload['viewModel'],
+            'previewItems': formatted['rows'][:50],
+            'summary': summary,
+            'generatedAt': snapshot_payload['generatedAt']
+        })
+    except Exception as e:
+        logger.error(f"Report Generation Error (BY_PN): {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert("Report Generation Failed", f"Critical failure in report_by_part_number for {part_number} (ID: {report_id if 'report_id' in locals() else 'NEW'}).", component="Reports:by-pn", error=e)
+        return jsonify({"message": f"Error interno al generar reporte para P/N {part_number}", "error": str(e)}), 500
+
+
+@reports_bp.route('/available-filters', methods=['GET'])
+@token_required_reports
+def get_available_filters():
+    """
+    Get available filter options based on current inventory data.
+    
+    Returns unique locations, tag colors in use, and date range.
+    """
+    db = get_db()
+    
+    # Get unique locations
+    locations = db.query(AviationPart.location).distinct().filter(
+        AviationPart.location != None,
+        AviationPart.location != ''
+    ).all()
+    locations = sorted([loc[0] for loc in locations if loc[0]])
+    
+    # Get date range
+    date_result = db.query(
+        func.min(AviationPart.registration_date),
+        func.max(AviationPart.registration_date)
+    ).first()
+    
+    # Get tag colors in use
+    tag_counts = db.query(
+        AviationPart.tag_color,
+        func.count(AviationPart.id)
+    ).group_by(AviationPart.tag_color).all()
+    
+    return jsonify({
+        'locations': locations,
+        'tagColors': ['YELLOW', 'GREEN', 'WHITE', 'RED'],
+        'tagColorCounts': dict(tag_counts),
+        'dateRange': {
+            'min': date_result[0] if date_result else None,
+            'max': date_result[1] if date_result else None
+        },
+        'categories': [
+            'ROTABLES',
+            'CONSUMIBLES', 
+            'MOTORES',
+            'AVIONICS',
+            'ESTRUCTURAL'
+        ]
+    })
+
+
+# --- EMAIL DISPATCH ---
+
+def generate_report_email_html(report_data):
+    """
+    Generate simplified HTML email body for aviation compliance.
+    Summary only, no technical tables in body.
+    """
+    report_type = report_data.get('reportType', 'Inventory Report')
+    report_id = report_data.get('reportId', 'N/A')
+    summary = report_data.get('summary', {})
+    
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+    </head>
+    <body style="font-family: sans-serif; color: #000000; line-height: 1.5; background-color: #ffffff; padding: 20px 0;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #000000; background-color: #ffffff; padding: 40px; box-sizing: border-box;">
+            <div style="border-bottom: 2px solid #000000; padding-bottom: 20px; margin-bottom: 24px; text-align: center;">
+                <h1 style="color: #000000; margin: 0; font-size: 20px; text-transform: uppercase; letter-spacing: 2px; font-weight: 900;">WORLD CLASS AVIATION</h1>
+                <p style="margin: 8px 0 0 0; color: #000000; font-size: 12px; font-weight: bold; text-transform: uppercase;">Aviation Technical Record</p>
+            </div>
+
+            <p style="font-size: 14px; color: #000000;">This email contains an attached <strong>FAA/EASA-compliant</strong> technical inventory report in PDF format.</p>
+            
+            <div style="border: 1px solid #000000; padding: 20px; margin: 24px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="color: #000000; font-size: 11px; text-transform: uppercase; padding-bottom: 8px; width: 40%; font-weight: bold;">Report ID</td>
+                        <td style="color: #000000; font-size: 14px; font-weight: bold; padding-bottom: 8px; font-family: monospace;">{report_id}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #000000; font-size: 11px; text-transform: uppercase; padding-bottom: 8px; font-weight: bold;">Report Type</td>
+                        <td style="color: #000000; font-size: 14px; font-weight: bold; padding-bottom: 8px;">{report_type.replace('_', ' ').title()}</td>
+                    </tr>
+                    <tr>
+                        <td style="color: #000000; font-size: 11px; text-transform: uppercase; font-weight: bold;">Total Units</td>
+                        <td style="color: #000000; font-size: 14px; font-weight: bold;">{summary.get('total', 0)}</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <p style="font-size: 12px; color: #000000; font-style: italic; margin-top: 32px;">
+                Note: This is an automated dispatch. All technical details are contained within the attached official document.
+            </p>
+
+            <div style="border-top: 1px solid #000000; margin-top: 32px; padding-top: 16px;">
+                <p style="margin: 0; font-size: 10px; color: #000000; text-align: center; font-weight: bold;">WORLD CLASS AVIATION - LOGISTICS TERMINAL SECURE LAYER</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
+
+def generate_csv_content(report_data):
+    """
+    Enterprise-Grade CSV Generator.
+    Features: UTF-8 with BOM for Excel compatibility, Stable labels.
+    """
+    try:
+        report_type = report_data.get('reportType', 'TOTAL_INVENTORY')
+        items = report_data.get('items', [])
+        
+        # MANDATORY FORMATTER
+        formatted = format_report_items(items, report_type)
+        columns = formatted['columns']
+        rows = formatted['rows']
+
+        # Headers
+        headers = [col['label'] for col in columns]
+        lines = [','.join(headers)]
+        
+        for row in rows:
+            line_parts = []
+            for col in columns:
+                val = str(row.get(col['key'], '—'))
+                if ',' in val or '"' in val or '\n' in val:
+                    val = val.replace('"', '""')
+                    val = f'"{val}"'
+                line_parts.append(val)
+            lines.append(','.join(line_parts))
+        
+        # Task 4: UTF-8 BOM
+        content = '\n'.join(lines)
+        return '\ufeff' + content # Add BOM
+    except Exception as e:
+        logger.error(f"CRITICAL: CSV Generation Failure: {e}")
+        return "\ufeffERROR: Failed to generate CSV report content."
+    except Exception as e:
+        logger.error(f"CRITICAL: CSV Generation Failure for {report_data.get('reportId')}: {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert(f"CSV Generation Failure", f"Error generating CSV for report {report_data.get('reportId')}", report_id=report_data.get('reportId'), error=e)
+        return "ERROR: Failed to generate CSV report content. System administrator notified."
+
+
+
+def draw_report_header_footer(canvas, doc, report_id, report_type, generated_at):
+    """Draw professional branding on every page."""
+    canvas.saveState()
+    
+    try:
+        # Define header boundary (Absolute positioning for strict alignment)
+        page_width, page_height = landscape(A4)
+        
+        # 1. LOGO (Removed for Ink Efficiency per request)
+        # Just drawing Company Name
+        
+        # 2. TITLE (True Center)
+        company_name = REPORT_BRANDING.get('companyName', 'Aviation Report')
+        subtitle = (report_type or 'Detailed Report').replace('_', ' ').title()
+        
+        # Black Ink Only
+        canvas.setFont('Helvetica-Bold', 16)
+        canvas.setFillColor(colors.black)
+        canvas.drawCentredString(page_width / 2.0, page_height - 40, company_name)
+        
+        canvas.setFont('Helvetica', 10)
+        canvas.setFillColor(colors.black) 
+        canvas.drawCentredString(page_width / 2.0, page_height - 52, subtitle)
+
+        # 3. METADATA (Right)
+        canvas.setFont('Helvetica', 8)
+        canvas.setFillColor(colors.black)
+        canvas.drawRightString(page_width - doc.rightMargin, page_height - 35, f"Report ID: {report_id or 'N/A'}")
+        canvas.drawRightString(page_width - doc.rightMargin, page_height - 45, f"Issued: {generated_at or 'N/A'}")
+        canvas.drawRightString(page_width - doc.rightMargin, page_height - 55, f"Confidentiality: Privileged")
+        
+        # Header Separator (Black Line)
+        canvas.setStrokeColor(colors.black) 
+        canvas.setLineWidth(1)
+        canvas.line(doc.leftMargin, page_height - 65, page_width - doc.rightMargin, page_height - 65)
+
+        # 4. FOOTER
+        footer_text = REPORT_BRANDING.get('footerText', 'CONFIDENTIAL')
+        
+        canvas.setStrokeColor(colors.black)
+        canvas.setLineWidth(0.5)
+        canvas.line(doc.leftMargin, 40, page_width - doc.rightMargin, 40)
+        
+        canvas.setFont('Helvetica-Bold', 7)
+        canvas.setFillColor(colors.black)
+        canvas.drawString(doc.leftMargin, 28, footer_text)
+        
+        canvas.setFont('Helvetica', 7)
+        canvas.drawCentredString(page_width / 2.0, 28, f"CERTIFIED RECORD | PAGE {doc.page} | {generated_at}")
+        canvas.drawRightString(page_width - doc.rightMargin, 28, f"World Class Aviation")
+        
+    except Exception as e:
+        # FAIL-SAFE FALLBACK: Draw minimal header if advanced layout crashes
+        logger.error(f"Header Layout Failure: {e}")
+        try:
+            page_width, page_height = landscape(A4)
+            canvas.setFont('Helvetica-Bold', 12)
+            canvas.setFillColor(colors.black)
+            canvas.drawString(doc.leftMargin, page_height - 50, f"Report: {report_type}")
+            canvas.setFont('Helvetica', 10)
+            canvas.drawString(doc.leftMargin, page_height - 65, f"ID: {report_id}")
+        except:
+            # Absolute worst case: do nothing, just let data print
+            pass
+
+    canvas.restoreState()
+
+def generate_pdf_report(report_data):
+    """
+    Enterprise-Grade PDF Generator (Portrait Mode).
+    Features: Section 1 (Summary Table) + Section 2 (Detailed Vertical Blocks).
+    Compliant with FAA/EASA Technical Record Standards.
+    """
+    try:
+        buffer = io.BytesIO()
+        # PORTRAIT A4 - Standard Aviation Format
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=A4, 
+            rightMargin=40, 
+            leftMargin=40, 
+            topMargin=60, 
+            bottomMargin=40
+        )
+        
+        elements = []
+        report_type = report_data.get('reportType', 'Inventory Report')
+        report_id = report_data.get('reportId', 'N/A')
+        generated_at = report_data.get('generatedAt', datetime.utcnow().strftime('%Y-%m-%d %H:%M'))
+
+        # Mandatory Formatter Usage
+        formatted = format_report_items(report_data.get('items', []), report_type)
+        all_columns = formatted['columns']
+        rows = formatted['rows']
+        
+        styles = getSampleStyleSheet()
+        title_style = styles['Heading2']
+        title_style.alignment = 1 # Center
+        section_style = ParagraphStyle('SectionHeader', parent=styles['Heading3'], spaceBefore=10, spaceAfter=10, fontSize=12, textColor=colors.black)
+        
+        # --- SECTION 1: INVENTORY IDENTIFICATION TABLE (SUMMARY) ---
+        elements.append(Paragraph("SECTION 1: INVENTORY IDENTIFICATION", section_style))
+        elements.append(Spacer(1, 5))
+        
+        # Filter Columns for Summary (Key Identification Data Only)
+        summary_keys = ['statusLabel', 'pn', 'sn', 'partName', 'location', 'registrationDate']
+        summary_cols = [col for col in all_columns if col['key'] in summary_keys]
+        
+        # Construct Summary Table Data
+        summary_data = []
+        summary_data.append([col['label'] for col in summary_cols])
+        
+        normal_style = styles['Normal']
+        normal_style.fontSize = 8
+        
+        for row in rows:
+            row_data = []
+            for col in summary_cols:
+                val = str(row.get(col['key'], '—'))
+                # Truncate slightly for summary table to ensure fit
+                if len(val) > 30 and col['key'] == 'partName':
+                     val = val[:27] + "..."
+                row_data.append(val)
+            summary_data.append(row_data)
+
+        if not rows:
+            elements.append(Paragraph("<br/><br/><center><b>No records found.</b></center>", styles['Normal']))
+        else:
+            # Summary Table Styling (Clean, Professional, Black/White)
+            # No Zebra, No Backgrounds.
+            t_summary = Table(summary_data, repeatRows=1)
+            t_summary.setStyle(TableStyle([
+                # Header Styling (White BG, Black Text, Bottom Border)
+                ('BACKGROUND', (0,0), (-1,0), colors.white),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0), (-1,0), 8),
+                ('BOTTOMPADDING', (0,0), (-1,0), 6),
+                ('LINEBELOW', (0,0), (-1,0), 1, colors.black), # Header Divider
+                
+                # Data Styling
+                ('FONTSIZE', (0,1), (-1,-1), 7),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black), # Grid is efficient enough
+            ]))
+            elements.append(t_summary)
+            
+        # --- PAGE BREAK BEFORE DETAILS ---
+        elements.append(PageBreak())
+        
+        # --- SECTION 2: COMPONENT TECHNICAL RECORDS (DETAILS) ---
+        # Ink Efficient Design: Blocks separated by whitespace, headers in boxes (not filled)
+        
+        elements.append(Paragraph("SECTION 2: COMPONENT TECHNICAL RECORDS", section_style))
+        elements.append(Spacer(1, 15))
+        
+        # Styles for Detail Blocks
+        header_bar_style = ParagraphStyle(
+            'DetailHeader', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, 
+            textColor=colors.black, leading=14 # Black Text
+        )
+        label_style = ParagraphStyle(
+            'Label', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, textColor=colors.black # Black Text
+        )
+        value_style = ParagraphStyle(
+            'Value', parent=styles['Normal'], fontName='Helvetica', fontSize=8, textColor=colors.black # Black Text
+        )
+
+        for row in rows:
+            # 1. Block Header (Bordered Box)
+            pn = row.get('pn', '—')
+            sn = row.get('sn', '—')
+            status = row.get('statusLabel', '—').upper()
+            header_text = f"P/N: {pn}  |  S/N: {sn}  |  {status}"
+            
+            # 2. Group Data Fields
+            groups = [
+                ("IDENTIFICATION", [
+                    ('Part Number', row.get('pn')),
+                    ('Serial Number', row.get('sn')),
+                    ('Description', row.get('partName')),
+                    ('Material Status', row.get('statusLabel')),
+                ]),
+                ("TECHNICAL DATA", [
+                    ('Manufacturer / Brand', row.get('brand')),
+                    ('Model', row.get('model')),
+                    ('Location', row.get('location')), 
+                    ('Bin/Shelf', row.get('physicalStorageLocation')),
+                    ('TAT/T.T', row.get('tat')),
+                    ('TSO', row.get('tso')),
+                    ('Shelf Life', row.get('shelfLife')),
+                    ('T.C.', row.get('tc')),
+                    ('CSO', row.get('cso')),
+                    ('C.REM', row.get('crem')),
+                    ('T.REM', row.get('trem')), 
+                ]),
+                 ("TRACEABILITY & HISTORY", [
+                    ('Registration Date', row.get('registrationDate')),
+                    ('Removal Reason', row.get('removalReason')),
+                    ('Rejection Reason', row.get('rejectionReason')),
+                    ('Disposition', row.get('finalDisposition')),
+                    ('Observations', row.get('observations')),
+                ]),
+                ("ADMINISTRATIVE", [
+                    ('Organization', row.get('organization')),
+                    ('Tech Name', row.get('technician_name')),
+                    ('Insp. Name', row.get('inspector_name')),
+                    ('System ID', row.get('id')),
+                ])
+            ]
+            
+            # Build Grid Rows
+            grid_data = []
+            
+            for group_name, fields in groups:
+                 # Group Header
+                grid_data.append([Paragraph(f"<b>{group_name}</b>", label_style), '', '', ''])
+                
+                # Fields
+                for i in range(0, len(fields), 2):
+                    f1 = fields[i]
+                    f2 = fields[i+1] if i+1 < len(fields) else (None, None)
+                    
+                    k1, v1 = f1[0], str(f1[1] if f1[1] is not None else '—')
+                    k2, v2 = (f2[0], str(f2[1] if f2[1] is not None else '—')) if f2[0] else ('', '')
+                    
+                    grid_data.append([
+                        Paragraph(k1, label_style), Paragraph(v1, value_style),
+                        Paragraph(k2, label_style) if k2 else '', Paragraph(v2, value_style) if k2 else ''
+                    ])
+
+            # Create Table
+            t_detail = Table(grid_data, colWidths=[90, 160, 90, 160])
+            t_detail.setStyle(TableStyle([
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('LINEBELOW', (0,0), (-1,-1), 0.25, colors.black), # Thin black lines
+                ('SPAN', (0,0), (-1,0), 0) if False else ('SPAN', (0,0), (-1,0)), 
+            ]))
+            
+            # Apply spans for group headers
+            row_idx = 0
+            styles_list = [
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('GRID', (0,0), (-1,-1), 0.25, colors.black), # Grid
+            ]
+            
+            for group_name, fields in groups:
+                 # The group header row - NO BACKGROUND
+                styles_list.append(('SPAN', (0, row_idx), (-1, row_idx))) 
+                styles_list.append(('BOTTOMPADDING', (0, row_idx), (-1, row_idx), 2))
+                # Add thicker line under group header
+                styles_list.append(('LINEBELOW', (0, row_idx), (-1, row_idx), 1, colors.black))
+                row_idx += 1
+                
+                # Calculate data rows
+                data_rows = (len(fields) + 1) // 2
+                row_idx += data_rows
+            
+            t_detail.setStyle(TableStyle(styles_list))
+
+            # Header Bar Table - WHITE BG, BLACK BORDER
+            t_header = Table([[Paragraph(header_text, header_bar_style)]], colWidths=[500])
+            t_header.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.white),
+                ('BOX', (0,0), (-1,-1), 1, colors.black), # Black Border box
+                ('LEFTPADDING', (0,0), (-1,-1), 10),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ]))
+
+            # Block Container
+            block = KeepTogether([
+                t_header,
+                t_detail,
+                Spacer(1, 30), # Increased white space
+            ])
+            elements.append(block)
+
+        # Build with Header/Footer callback
+        doc.build(elements, 
+                  onFirstPage=lambda c, d: draw_report_header_footer(c, d, report_id, report_type, generated_at),
+                  onLaterPages=lambda c, d: draw_report_header_footer(c, d, report_id, report_type, generated_at))
+        
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        logger.error(f"CRITICAL: PDF Generation Failure for {report_data.get('reportId')}: {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert(f"PDF Generation Failure", f"Error building PDF document for report {report_data.get('reportId')}", report_id=report_data.get('reportId'), error=e)
+        
+        # Emergency PDF
+        error_buffer = io.BytesIO()
+        c = canvas.Canvas(error_buffer, pagesize=A4)
+        c.drawString(100, 750, "CRITICAL ERROR: Failed to generate report PDF.")
+        c.drawString(100, 730, f"Report ID: {report_data.get('reportId', 'N/A')}")
+        c.save()
+        error_buffer.seek(0)
+        return error_buffer
+    except Exception as e:
+        logger.error(f"CRITICAL: PDF Generation Failure for {report_data.get('reportId')}: {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert(f"PDF Generation Failure", f"Error building PDF document for report {report_data.get('reportId')}", report_id=report_data.get('reportId'), error=e)
+        
+        # Return simple error PDF if possible or raise
+        error_buffer = io.BytesIO()
+        c = canvas.Canvas(error_buffer, pagesize=A4)
+        c.drawString(100, 750, "CRITICAL ERROR: Failed to generate report PDF.")
+        c.drawString(100, 730, f"Report ID: {report_data.get('reportId', 'N/A')}")
+        c.drawString(100, 710, "The system administrator has been notified.")
+        c.save()
+        error_buffer.seek(0)
+        return error_buffer
+
+def generate_excel_report(report_data):
+    """
+    Enterprise-Grade Excel Generator.
+    Features: Frozen Headers, Filters, Brand Styling, Auto-sizing.
+    """
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Aviation Inventory Report"
+        
+        # Mandatory Formatter Usage
+        report_type = report_data.get('reportType', 'TOTAL_INVENTORY')
+        formatted = format_report_items(report_data.get('items', []), report_type)
+        columns = formatted['columns']
+        rows = formatted['rows']
+        
+        # Styles
+        # Ink Efficient: White Background, Black Text
+        header_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+        header_font = Font(bold=True, color="000000", size=11)
+        header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+        # Headers
+        for col_idx, col in enumerate(columns, 1):
+            cell = ws.cell(row=1, column=col_idx, value=col['label'])
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+        
+        # Rows
+        for row_idx, row_data in enumerate(rows, 2):
+            for col_idx, col in enumerate(columns, 1):
+                val = row_data.get(col['key'], '—')
+                ws.cell(row=row_idx, column=col_idx, value=val)
+            
+        # 1. Freeze Header
+        ws.freeze_panes = "A2"
+        
+        # 2. Add Auto-Filters
+        if columns:
+            last_col_letter = ws.cell(row=1, column=len(columns)).column_letter
+            ws.auto_filter.ref = f"A1:{last_col_letter}{len(rows) + 1}"
+            
+        # 3. Auto-adjust column widths
+        for column_cells in ws.columns:
+            length = max(len(str(cell.value or "")) for cell in column_cells)
+            ws.column_dimensions[column_cells[0].column_letter].width = min(length + 4, 60)
+
+        # 4. Zero-Row Safety
+        if not rows:
+            ws.cell(row=2, column=1, value="No records found for this criteria.")
+            ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(columns) if columns else 1)
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        logger.error(f"CRITICAL: Excel Generation Failure: {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert(f"Excel Generation Failure", f"Error building Excel workbook.", error=e)
+        return None
+    except Exception as e:
+        logger.error(f"CRITICAL: Excel Generation Failure for {report_data.get('reportId')}: {e}")
+        from .utils.normalization import send_critical_alert
+        send_critical_alert(f"Excel Generation Failure", f"Error building Excel workbook for report {report_data.get('reportId')}", report_id=report_data.get('reportId'), error=e)
+        
+        # Return fallback excel with error message
+        eb = Workbook()
+        es = eb.active
+        es.append(["CRITICAL ERROR", "Failed to generate Excel report."])
+        es.append(["Report ID", report_data.get('reportId', 'N/A')])
+        es.append(["Details", "The system administrator has been notified."])
+        
+        err_buffer = io.BytesIO()
+        eb.save(err_buffer)
+        err_buffer.seek(0)
+        return err_buffer
+
+
+
+@reports_bp.route('/<string:report_id>/email', methods=['POST'])
+@token_required_reports
+def send_report_email(report_id):
+    """ Send report via email using SERVER-SIDE SNAPSHOT (Hardened) """
+    from . import server_email
+    from .utils.normalization import repair_snapshot_on_load, send_critical_alert
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = get_db()
+    snapshot = db.query(ReportSnapshot).filter(ReportSnapshot.id == report_id).first()
+    if not snapshot:
+        return jsonify({"message": "Snapshot no encontrado"}), 404
+        
+    # SECURITY & VALIDATION
+    try:
+        from .models import User
+        user_id = getattr(request, 'user_id', None)
+        current_user = db.query(User).filter(User.id == user_id).first()
+        if not current_user:
+            return jsonify({"message": "Error de validación de usuario"}), 401
+            
+        is_owner = snapshot.created_by == current_user.name
+        is_privileged = current_user.role in ['ADMIN', 'AUDITOR']
+        if not (is_owner or is_privileged):
+            return jsonify({"message": "No autorizado para este reporte"}), 403
+
+        # --- CRITICAL REPAIR / NORMALIZATION ---
+        report_data = repair_snapshot_on_load(snapshot.content_snapshot, report_id, source="email")
+        if not report_data:
+            return jsonify({"message": "Error crítico: El snapshot está dañado y no pudo ser reparado"}), 500
+        # ---------------------------------------
+
+        data = request.json
+        recipients = data.get('recipients', [])
+        export_format = data.get('format', 'PDF').upper()
+        
+        if not recipients:
+            return jsonify({"message": "No se especificaron destinatarios"}), 400
+        
+        html_body = generate_report_email_html(report_data)
+        subject = f"Aviation Technical Record - {report_data.get('reportType', 'Report')} - {report_id}"
+        cfg = server_email.load_config()
+        
+        # Prepare data for generators (Task 2 & 3: Mandatory Formatter)
+        formatted = format_report_items(report_data.get('items', []), report_data.get('reportType', 'TOTAL_INVENTORY'))
+        report_data['items'] = formatted['rows']
+        
+        # Consistent Filename (Task 6)
+        date_str = datetime.utcnow().strftime('%Y%m%d')
+        base_name = f"{report_data.get('reportType', 'REPORT')}_{date_str}"
+
+        # Attachment Generation
+        files = []
+        card_type = report_data.get('reportType', 'GENERAL')
+        
+        if export_format == 'PDF':
+            buffer = generate_pdf_report(report_data)
+            
+            # --- UNIFIED PERSISTENCE FOR EMAIL ---
+            try:
+                 UnifiedArchiveService.persist_report(
+                    buffer, base_name, 'PDF', card_type, 'Email'
+                 )
+            except Exception as archive_err:
+                 logger.error(f"EMAIL_ARCHIVE_ERROR: {archive_err}")
+            # -------------------------------------
+
+            files.append({'filename': f'{base_name}.pdf', 'content': buffer.getvalue(), 'mimetype': 'application/pdf'})
+            
+        elif export_format in ['EXCEL', 'XLSX']:
+            buffer = generate_excel_report(report_data)
+            
+            # --- UNIFIED PERSISTENCE FOR EMAIL ---
+            try:
+                 UnifiedArchiveService.persist_report(
+                    buffer, base_name, 'XLSX', card_type, 'Email'
+                 )
+            except Exception as archive_err:
+                 logger.error(f"EMAIL_ARCHIVE_ERROR: {archive_err}")
+            # -------------------------------------
+            
+            files.append({'filename': f'{base_name}.xlsx', 'content': buffer.getvalue(), 'mimetype': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+            
+        elif export_format == 'CSV':
+            content = generate_csv_content(report_data)
+            # CSV persistence optional/skipped for now unless requested
+            files.append({'filename': f'{base_name}.csv', 'content': content.encode('utf-8'), 'mimetype': 'text/csv'})
+
+        # Dispatch
+        success_count = 0
+        failed_recipients = []
+        for recipient in recipients:
+            try:
+                success, msg = server_email.send_via_smtp(cfg, recipient, subject, html_body, files=files)
+                if success: success_count += 1
+                else: failed_recipients.append(recipient)
+            except Exception as e:
+                logger.error(f"Error enviando a {recipient}: {e}")
+                failed_recipients.append(recipient)
+        
+        if success_count > 0:
+            log_report_activity('EMAIL', report_id, report_data.get('reportType'), {}, details=f"Sent to {success_count}")
+            return jsonify({"success": True, "sent": success_count, "failed": failed_recipients})
+        else:
+            return jsonify({"success": False, "failed": failed_recipients, "message": "Fallo total en envío SMTP"}), 500
+
+    except Exception as e:
+        logger.error(f"Email Dispatch Critical Failure: {e}")
+        send_critical_alert("Email Dispatch Failed", f"Critical failure dispatching report {report_id}.", component="Reports:email", error=e)
+        return jsonify({"message": "Error interno al procesar envío de email", "error": str(e)}), 500
+
+
+@reports_bp.route('/<string:report_id>/download', methods=['GET'])
+@token_required_reports
+def download_report(report_id):
+    """ Download report document using SERVER-SIDE SNAPSHOT (Fail-Safe) """
+    try:
+        db = get_db()
+        snapshot = db.query(ReportSnapshot).filter(ReportSnapshot.id == report_id).first()
+        
+        if not snapshot:
+            return jsonify({"message": "Snapshot no encontrado"}), 404
+            
+        if snapshot.expires_at and snapshot.expires_at < datetime.utcnow():
+            return jsonify({"message": "El snapshot ha expirado"}), 410
+
+        from .models import User
+        user_id = getattr(request, 'user_id', None)
+        current_user = db.query(User).filter(User.id == user_id).first()
+        
+        # Security: Owner or Admin
+        is_owner = False
+        is_privileged = False
+        if current_user:
+             is_owner = snapshot.created_by == current_user.name
+             is_privileged = current_user.role in ['ADMIN', 'AUDITOR']
+        
+        if not (is_owner or is_privileged):
+            return jsonify({"message": "No autorizado para descargar este reporte"}), 403
+            
+        # --- NORMALIZATION ---
+        from .utils.normalization import repair_snapshot_on_load
+        report_data = repair_snapshot_on_load(snapshot.content_snapshot, report_id, source="download")
+        if not report_data:
+            return jsonify({"message": "Error crítico: El snapshot está dañado"}), 500
+
+        export_format = request.args.get('format', 'PDF').upper()
+        log_report_activity(f'DOWNLOAD_{export_format}', report_id, report_data.get('reportType'), {})
+        
+        # Formatter
+        formatted = format_report_items(report_data.get('items', []), report_data.get('reportType', 'TOTAL_INVENTORY'))
+        report_data['items'] = formatted['rows']
+
+        if export_format == 'PDF':
+            # --- FAIL-SAFE SERVE LOGIC WITH UNIFIED ARCHIVE SERVICE ---
+            try:
+                # 1. Definir Metadata para Cache
+                gen_at_str = report_data.get('generatedAt')
+                date_obj = datetime.utcnow()
+                if gen_at_str:
+                    try:
+                        date_obj = datetime.fromisoformat(gen_at_str.replace('Z', '+00:00'))
+                    except ValueError: pass
+
+                card_type = report_data.get('reportType', 'GENERAL')
+                base_filename = f"{report_id}"
+
+                # 2. Intentar localizar en caché (Smart Cache)
+                cached_path = UnifiedArchiveService.get_cached_path(base_filename, 'PDF', card_type, 'Download', date_obj)
+                if cached_path:
+                    logger.info(f"SMART CACHE HIT: Sirviendo {cached_path}")
+                    return send_file(cached_path, as_attachment=True, download_name=f"{report_id}.pdf", mimetype='application/pdf')
+
+                # 3. Generar si no existe (Cache Miss)
+                logger.info("CACHE MISS: Generando PDF...")
+                buffer = generate_pdf_report(report_data)
+                
+                # 4. Persistencia Unificada (FAIL-SAFE)
+                try:
+                    UnifiedArchiveService.persist_report(
+                        buffer, base_filename, 'PDF', card_type, 'Download', date_obj
+                    )
+                except Exception as disk_err:
+                     # LOG ONLY - DO NOT CRASH
+                    logger.error(f"PERSISTENCE WARNING (No crítico): Fallo al guardar en disco: {disk_err}")
+
+                # 5. Entrega obligatoria
+                buffer.seek(0)
+                return send_file(buffer, as_attachment=True, download_name=f"{report_id}.pdf", mimetype='application/pdf')
+
+            except Exception as e:
+                logger.error(f"ERROR CRÍTICO EN PDF: {str(e)}")
+                return jsonify({"error": "No se pudo procesar el reporte", "details": str(e)}), 500
+
+        elif export_format in ['EXCEL', 'XLSX']:
+            try:
+                # 1. Metadata
+                gen_at_str = report_data.get('generatedAt')
+                date_obj = datetime.utcnow()
+                if gen_at_str:
+                    try:
+                        date_obj = datetime.fromisoformat(gen_at_str.replace('Z', '+00:00'))
+                    except ValueError: pass
+                    
+                card_type = report_data.get('reportType', 'GENERAL')
+                base_filename = f"{report_id}"
+                
+                # 2. Smart Cache Check
+                cached_path = UnifiedArchiveService.get_cached_path(base_filename, 'XLSX', card_type, 'Download', date_obj)
+                if cached_path:
+                    logger.info(f"SMART CACHE HIT: Sirviendo {cached_path}")
+                    return send_file(cached_path, as_attachment=True, download_name=f"{report_id}.xlsx", mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+                # 3. Generation
+                buffer = generate_excel_report(report_data)
+                
+                # 4. Persistence
+                try:
+                    UnifiedArchiveService.persist_report(
+                        buffer, base_filename, 'XLSX', card_type, 'Download', date_obj
+                    )
+                except Exception as disk_err:
+                    logger.error(f"PERSISTENCE WARNING: {disk_err}")
+                
+                # 5. Serve
+                buffer.seek(0)
+                return send_file(buffer, as_attachment=True, download_name=f"{report_id}.xlsx", mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                
+            except Exception as e:
+                 logger.error(f"Excel Generation Error: {e}")
+                 return jsonify({"error": "Error generando Excel", "details": str(e)}), 500
+
+        elif export_format == 'CSV':
+            # CSV persistence is rarely critical but good for consistency
+            csv_content = generate_csv_content(report_data)
+            return Response(csv_content, mimetype="text/csv", headers={"Content-disposition": f"attachment; filename={report_id}.csv"})
+
+        return jsonify({"message": f"Formato no soportado: {export_format}"}), 400
+
+    except Exception as e:
+        logger.error(f"Download Critical Failure: {e}")
+        return jsonify({"message": "Error interno al procesar descarga", "error": str(e)}), 500
+
+
+# --- APPROVAL TOKEN SYSTEM ---
+
+def generate_approval_token():
+    """Generate a unique approval token."""
+    return f"APR-{uuid.uuid4().hex}"
+
+
+def create_device_fingerprint(request):
+    """Create device fingerprint from request headers."""
+    import hashlib
+    user_agent = request.headers.get('User-Agent', 'unknown')
+    ip = request.remote_addr or 'unknown'
+    fingerprint_data = f"{user_agent}:{ip}"
+    return hashlib.sha256(fingerprint_data.encode()).hexdigest()[:32]
+
+
+def generate_approval_email_html(report_data, approval_token, base_url):
+    """
+    Generate styled HTML email with ACKNOWLEDGE & SIGN RECEIPT button.
+    Follows World Class Aviation industrial design.
+    """
+    report_type_labels = {
+        'TOTAL_INVENTORY': 'Total Inventory',
+        'BY_STATUS': 'By Card Type',
+        'BY_LOCATION': 'By Location',
+        'BY_PART_NUMBER': 'By Part Number'
+    }
+    
+    report_type = report_data.get('reportType', 'UNKNOWN')
+    summary = report_data.get('summary', {})
+    filters = report_data.get('filtersApplied', {})
+    
+    # Build filters list
+    filters_html = ''
+    if filters:
+        filters_list = ''.join([
+            f'<tr><td style="padding: 4px 8px; font-size: 11px; color: #64748b;">{k}</td>'
+            f'<td style="padding: 4px 8px; font-size: 11px; color: #1e293b; font-weight: bold;">{v}</td></tr>'
+            for k, v in filters.items()
+        ])
+        filters_html = f'''
+        <table cellpadding="0" cellspacing="0" style="width: 100%; margin-top: 12px;">
+            <tr><td colspan="2" style="font-size: 10px; color: #94a3b8; text-transform: uppercase; padding-bottom: 4px;">Applied Filters</td></tr>
+            {filters_list}
+        </table>
+        '''
+    
+    # Status breakdown with color indicators
+    by_status = summary.get('byStatus', {})
+    status_colors = {
+        'YELLOW': '#eab308',
+        'GREEN': '#10b981',
+        'WHITE': '#64748b',
+        'RED': '#f43f5e'
+    }
+    status_html = ''.join([
+        f'''<td style="padding: 8px; text-align: center;">
+            <div style="width: 12px; height: 12px; background-color: {status_colors.get(status, '#6366f1')}; 
+                        border-radius: 2px; margin: 0 auto 4px auto;"></div>
+            <div style="font-size: 18px; font-weight: 900; color: #0f172a;">{count}</div>
+            <div style="font-size: 9px; color: #94a3b8; text-transform: uppercase;">{STATUS_DISPLAY_MAP.get(status, status)}</div>
+        </td>'''
+        for status, count in by_status.items()
+    ])
+    
+    # Approval button URL
+    approval_url = f"{base_url}/api/reports/acknowledge/{approval_token}"
+    
+    html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc;">
+        <table cellpadding="0" cellspacing="0" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+            
+            <!-- HEADER: Branded Gold block -->
+            <tr>
+                <td style="background-color: #b8860b; padding: 24px 32px;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                        <tr>
+                            <td>
+                                <h1 style="margin: 0; color: #ffffff; font-size: 14px; font-weight: 900; 
+                                           text-transform: uppercase; letter-spacing: 2px;">
+                                    Aviation Technical Record
+                                </h1>
+                                <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">
+                                    Report Dispatch - Approval Required
+                                </p>
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="background-color: #8c6609; padding: 8px 16px; border-radius: 4px;">
+                                    <span style="color: #ffffff; font-size: 12px; font-weight: 900;">
+                                        WORLD CLASS AVIATION
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- REPORT INFO -->
+            <tr>
+                <td style="padding: 24px 32px; border-bottom: 1px solid #e2e8f0;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                        <tr>
+                            <td style="vertical-align: top; width: 50%;">
+                                <p style="margin: 0; font-size: 10px; color: #94a3b8; text-transform: uppercase;">Report ID</p>
+                                <p style="margin: 4px 0; font-size: 16px; font-weight: 900; color: #4f46e5; font-family: monospace;">
+                                    {report_data.get('reportId', 'N/A')}
+                                </p>
+                            </td>
+                            <td style="vertical-align: top; width: 50%; text-align: right;">
+                                <p style="margin: 0; font-size: 10px; color: #94a3b8; text-transform: uppercase;">Generated</p>
+                                <p style="margin: 4px 0; font-size: 12px; color: #1e293b; font-weight: bold;">
+                                    {report_data.get('generatedAt', 'N/A')}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- SUMMARY TABLE -->
+            <tr>
+                <td style="padding: 24px 32px;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%; border: 2px solid #0f172a;">
+                        <tr>
+                            <td colspan="2" style="background-color: #0f172a; padding: 12px 16px;">
+                                <span style="color: #ffffff; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
+                                    Report Summary / Resumen del Reporte
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px 16px; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0; width: 40%;">
+                                <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Report Type / Tipo</span>
+                            </td>
+                            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0;">
+                                <span style="font-size: 13px; color: #0f172a; font-weight: 900;">
+                                    {report_type_labels.get(report_type, report_type)}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px 16px; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                                <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Item Count / Total Items</span>
+                            </td>
+                            <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0;">
+                                <span style="font-size: 24px; color: #0f172a; font-weight: 900;">{summary.get('total', 0)}</span>
+                                <span style="font-size: 11px; color: #94a3b8; margin-left: 8px;">units</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px 16px; background-color: #f8fafc;">
+                                <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Generated By / Por</span>
+                            </td>
+                            <td style="padding: 12px 16px;">
+                                <span style="font-size: 13px; color: #0f172a; font-weight: bold;">
+                                    {report_data.get('generatedBy', 'System')}
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    {filters_html}
+                </td>
+            </tr>
+            
+            <!-- STATUS BREAKDOWN -->
+            <tr>
+                <td style="padding: 0 32px 24px 32px;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%; background-color: #f8fafc; border: 1px solid #e2e8f0;">
+                        <tr>
+                            <td colspan="4" style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">
+                                <span style="font-size: 10px; color: #64748b; text-transform: uppercase;">Status Breakdown</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            {status_html}
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- ACKNOWLEDGE BUTTON -->
+            <tr>
+                <td style="padding: 16px 32px 32px 32px;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                        <tr>
+                            <td align="center">
+                                <a href="{approval_url}" 
+                                   style="display: inline-block; padding: 20px 48px; 
+                                          background-color: #eab308; color: #0f172a; 
+                                          font-size: 14px; font-weight: 900; text-transform: uppercase;
+                                          text-decoration: none; letter-spacing: 1px;
+                                          border: 3px solid #10b981; border-radius: 8px;
+                                          box-shadow: 0 4px 12px rgba(234, 179, 8, 0.4);">
+                                    ✓ ACKNOWLEDGE &amp; SIGN RECEIPT
+                                </a>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td align="center" style="padding-top: 12px;">
+                                <p style="margin: 0; font-size: 10px; color: #94a3b8;">
+                                    Click button above to confirm receipt of this report.
+                                    This action will be recorded in the Aircraft Maintenance Log.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- FOOTER -->
+            <tr>
+                <td style="padding: 24px 32px; background-color: #0f172a;">
+                    <table cellpadding="0" cellspacing="0" style="width: 100%;">
+                        <tr>
+                            <td>
+                                <p style="margin: 0; color: #64748b; font-size: 10px;">
+                                    This is an automated message from the Aviation Inventory System.
+                                </p>
+                                <p style="margin: 4px 0 0 0; color: #475569; font-size: 10px;">
+                                    World Class Aviation - Logistics Terminal Secure Layer
+                                </p>
+                            </td>
+                            <td style="text-align: right;">
+                                <p style="margin: 0; color: #94a3b8; font-size: 9px; font-family: monospace;">
+                                    VER 7.0.0-APPROVAL
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+        </table>
+    </body>
+    </html>
+    '''
+    
+    return html
+
+
+def generate_acknowledgment_page_html(report_data, acknowledged_by):
+    """
+    Generate HTML landing page for successful report acknowledgment.
+    Industrial World Class Aviation styling.
+    """
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Report Acknowledgment - World Class Aviation</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }}
+            .container {{
+                background: white;
+                border-radius: 24px;
+                max-width: 500px;
+                width: 100%;
+                overflow: hidden;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            }}
+            .header {{
+                background: #0f172a;
+                padding: 24px 32px;
+                text-align: center;
+            }}
+            .header h1 {{
+                color: white;
+                font-size: 14px;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                margin-bottom: 4px;
+            }}
+            .header p {{
+                color: #94a3b8;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }}
+            .success-icon {{
+                display: flex;
+                justify-content: center;
+                padding: 40px 32px 24px;
+            }}
+            .checkmark {{
+                width: 100px;
+                height: 100px;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4);
+                animation: pulse 2s infinite;
+            }}
+            @keyframes pulse {{
+                0%, 100% {{ transform: scale(1); }}
+                50% {{ transform: scale(1.05); }}
+            }}
+            .checkmark svg {{
+                width: 50px;
+                height: 50px;
+                fill: white;
+            }}
+            .content {{
+                padding: 0 32px 32px;
+                text-align: center;
+            }}
+            .title {{
+                font-size: 20px;
+                font-weight: 900;
+                color: #0f172a;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin-bottom: 16px;
+            }}
+            .message {{
+                font-size: 13px;
+                color: #64748b;
+                line-height: 1.6;
+                margin-bottom: 24px;
+            }}
+            .details {{
+                background: #f8fafc;
+                border: 2px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 16px;
+                text-align: left;
+            }}
+            .detail-row {{
+                display: flex;
+                justify-content: space-between;
+                padding: 8px 0;
+                border-bottom: 1px solid #e2e8f0;
+            }}
+            .detail-row:last-child {{
+                border-bottom: none;
+            }}
+            .detail-label {{
+                font-size: 10px;
+                color: #94a3b8;
+                text-transform: uppercase;
+                font-weight: bold;
+            }}
+            .detail-value {{
+                font-size: 12px;
+                color: #0f172a;
+                font-weight: bold;
+                font-family: monospace;
+            }}
+            .footer {{
+                background: #0f172a;
+                padding: 16px 32px;
+                text-align: center;
+            }}
+            .footer p {{
+                color: #64748b;
+                font-size: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Report Acknowledgment Successful</h1>
+                <p>World Class Aviation • Aircraft Maintenance Log</p>
+            </div>
+            
+            <div class="success-icon">
+                <div class="checkmark">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                    </svg>
+                </div>
+            </div>
+            
+            <div class="content">
+                <h2 class="title">Acknowledgment Recorded</h2>
+                <p class="message">
+                    Your acknowledgment has been recorded in the Aircraft Maintenance Log.
+                    This confirmation is permanent and cannot be modified.
+                </p>
+                
+                <div class="details">
+                    <div class="detail-row">
+                        <span class="detail-label">Report ID</span>
+                        <span class="detail-value">{report_data.get('reportId', 'N/A')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Report Type</span>
+                        <span class="detail-value">{report_data.get('reportType', 'N/A')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Generated</span>
+                        <span class="detail-value">{report_data.get('generatedAt', 'N/A')}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Acknowledged By</span>
+                        <span class="detail-value">{acknowledged_by}</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Timestamp</span>
+                        <span class="detail-value">{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p>This record is now read-only for compliance purposes.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    '''
+
+
+@reports_bp.route('/<string:report_id>/send-with-approval', methods=['POST'])
+@token_required_reports
+def send_report_with_approval(report_id):
+    """ Send report with approval token (Hardened) """
+    from . import server_email
+    from .utils.normalization import repair_snapshot_on_load, send_critical_alert
+    import logging
+    import os
+    logger = logging.getLogger(__name__)
+    
+    db = get_db()
+    try:
+        snapshot = db.query(ReportSnapshot).filter(ReportSnapshot.id == report_id).first()
+        if not snapshot:
+            return jsonify({"message": "Snapshot no encontrado"}), 404
+            
+        # SECURITY CHECK
+        from .models import User
+        user_id = getattr(request, 'user_id', None)
+        current_user = db.query(User).filter(User.id == user_id).first()
+        if not current_user:
+            return jsonify({"message": "Error de validación de usuario"}), 401
+            
+        is_owner = snapshot.created_by == current_user.name
+        is_privileged = current_user.role in ['ADMIN', 'AUDITOR']
+        if not (is_owner or is_privileged):
+            return jsonify({"message": "No autorizado para este reporte"}), 403
+
+        # --- CRITICAL REPAIR / NORMALIZATION ---
+        report_data = repair_snapshot_on_load(snapshot.content_snapshot, report_id, source="approval_email")
+        if not report_data:
+            return jsonify({"message": "Error crítico: El snapshot está dañado y no pudo ser reparado"}), 500
+        # ---------------------------------------
+
+        data = request.json
+        recipients = data.get('recipients', [])
+        if not recipients:
+            return jsonify({"message": "No se especificaron destinatarios"}), 400
+        
+        current_user_name = current_user.name
+        base_url = os.environ.get('BASE_URL', request.host_url.rstrip('/'))
+        cfg = server_email.load_config()
+        
+        success_count = 0
+        failed_recipients = []
+        
+        for recipient in recipients:
+            try:
+                token = generate_approval_token()
+                approval_token = ReportApprovalToken(
+                    token=token,
+                    report_id=report_id,
+                    report_type=report_data.get('reportType', 'UNKNOWN'),
+                    report_data=report_data,
+                    recipient_email=recipient,
+                    sent_by_user_id=user_id,
+                    sent_by_user_name=current_user_name,
+                    created_at=datetime.utcnow(),
+                    expires_at=datetime.utcnow() + timedelta(days=7),
+                    acknowledged=False
+                )
+                db.add(approval_token)
+                db.commit()
+                
+                html_body = generate_approval_email_html(report_data, token, base_url)
+                subject = f"[ACTION REQUIRED] Aviation Report - {report_data.get('reportType', 'Report')} - {report_id}"
+                
+                success, msg = server_email.send_via_smtp(cfg, recipient, subject, html_body)
+                if success: success_count += 1
+                else: failed_recipients.append(recipient)
+            except Exception as e:
+                logger.error(f"Error enviando aprobación a {recipient}: {e}")
+                db.rollback()
+                failed_recipients.append(recipient)
+        
+        if success_count > 0:
+            log_report_activity('APPROVAL_EMAIL', report_id, report_data.get('reportType'), {}, details=f"Sent to {success_count}")
+            return jsonify({"success": True, "sent": success_count, "failed": failed_recipients})
+        else:
+            return jsonify({"success": False, "failed": failed_recipients, "message": "Fallo total en envío de aprobación"}), 500
+
+    except Exception as e:
+        logger.error(f"Approval Email Dispatch Failure: {e}")
+        send_critical_alert("Approval Email Failed", f"Critical failure sending approval request for {report_id}.", component="Reports:approval", error=e)
+        return jsonify({"message": "Error interno al procesar solicitud de aprobación", "error": str(e)}), 500
+
+
+@reports_bp.route('/acknowledge/<string:token>', methods=['GET'])
+def acknowledge_report(token):
+    """
+    Process report acknowledgment via email link.
+    Does not require full authentication if user has active session.
+    Returns HTML landing page on success.
+    """
+    from flask import make_response
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    db = get_db()
+    
+    # Find the approval token
+    approval = db.query(ReportApprovalToken).filter(
+        ReportApprovalToken.token == token
+    ).first()
+    
+    if not approval:
+        return make_response('''
+            <html><body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1 style="color: #dc2626;">Invalid Token</h1>
+                <p>This approval link is invalid or has expired.</p>
+            </body></html>
+        ''', 404)
+    
+    # Check if already acknowledged
+    if approval.acknowledged:
+        return make_response(generate_acknowledgment_page_html(
+            approval.report_data,
+            f"{approval.acknowledged_by_user_name} (Already Acknowledged)"
+        ), 200)
+    
+    # Check if expired
+    if approval.expires_at < datetime.utcnow():
+        return make_response('''
+            <html><body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1 style="color: #dc2626;">Token Expired</h1>
+                <p>This approval link has expired. Please request a new report.</p>
+            </body></html>
+        ''', 410)
+    
+    # Get user from session if available
+    auth_header = request.headers.get('Authorization')
+    user_name = "Email Recipient"
+    user_id = "email_recipient"
+    
+    if auth_header and auth_header.startswith('Bearer '):
+        from .models import UserSession, User
+        session_token = auth_header.split(' ')[1]
+        session = db.query(UserSession).filter(UserSession.token == session_token).first()
+        if session and session.expiry > datetime.utcnow():
+            user = db.query(User).filter(User.id == session.user_id).first()
+            if user:
+                user_name = user.name
+                user_id = user.id
+    
+    # Create device fingerprint
+    fingerprint = create_device_fingerprint(request)
+    
+    # Update approval record
+    approval.acknowledged = True
+    approval.acknowledged_at = datetime.utcnow()
+    approval.acknowledged_by_user_id = user_id
+    approval.acknowledged_by_user_name = user_name
+    approval.device_fingerprint = fingerprint
+    
+    # Create audit log entry (READ-ONLY after creation)
+    log_entry = ReportLog(
+        id=f"LOG-{uuid.uuid4().hex[:12].upper()}",
+        report_id=approval.report_id,
+        report_type=approval.report_type,
+        user_id=user_id,
+        user_name=user_name,
+        acknowledge_timestamp=datetime.utcnow(),
+        device_fingerprint=fingerprint,
+        recipient_email=approval.recipient_email,
+        item_count=str(approval.report_data.get('summary', {}).get('total', 0)),
+        filters_applied=approval.report_data.get('filtersApplied', {}),
+        status='ACKNOWLEDGED',
+        created_at=datetime.utcnow()
+    )
+    db.add(log_entry)
+    
+    try:
+        db.commit()
+        logger.info(f"Report {approval.report_id} acknowledged by {user_name}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error acknowledging report: {e}")
+        return make_response('''
+            <html><body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h1 style="color: #dc2626;">Error</h1>
+                <p>An error occurred while processing your acknowledgment.</p>
+            </body></html>
+        ''', 500)
+    
+    # Return success landing page
+    return make_response(
+        generate_acknowledgment_page_html(approval.report_data, user_name),
+        200
+    )
+
+
+@reports_bp.route('/logs', methods=['GET'])
+@token_required_reports
+def get_report_logs():
+    """
+    Get audit log entries. Read-only endpoint for compliance review.
+    
+    Query Parameters:
+    - report_id: Filter by specific report
+    - user_id: Filter by user
+    - limit: Number of results (default 50)
+    """
+    db = get_db()
+    
+    query = db.query(ReportLog).order_by(ReportLog.acknowledge_timestamp.desc())
+    
+    report_id = request.args.get('report_id')
+    if report_id:
+        query = query.filter(ReportLog.report_id == report_id)
+    
+    user_id = request.args.get('user_id')
+    if user_id:
+        query = query.filter(ReportLog.user_id == user_id)
+    
+    limit = int(request.args.get('limit', 50))
+    logs = query.limit(limit).all()
+    
+    return jsonify({
+        'logs': [{
+            'id': log.id,
+            'reportId': log.report_id,
+            'reportType': log.report_type,
+            'userId': log.user_id,
+            'userName': log.user_name,
+            'acknowledgeTimestamp': log.acknowledge_timestamp.isoformat() if log.acknowledge_timestamp else None,
+            'deviceFingerprint': log.device_fingerprint,
+            'recipientEmail': log.recipient_email,
+            'itemCount': log.item_count,
+            'filtersApplied': log.filters_applied,
+            'status': log.status,
+            'createdAt': log.created_at.isoformat() if log.created_at else None
+        } for log in logs],
+        'count': len(logs)
+    })
+
+
+@reports_bp.route('/tokens', methods=['GET'])
+@token_required_reports
+def get_report_tokens():
+    """
+    Get all report approval tokens for the history dashboard.
+    
+    Query Parameters:
+    - status: 'pending' | 'acknowledged' | 'all' (default: all)
+    - type: report type filter
+    - limit: Number of results (default 100)
+    """
+    db = get_db()
+    
+    query = db.query(ReportApprovalToken).order_by(ReportApprovalToken.created_at.desc())
+    
+    status = request.args.get('status', 'all').lower()
+    if status == 'pending':
+        query = query.filter(ReportApprovalToken.acknowledged == False)
+    elif status == 'acknowledged':
+        query = query.filter(ReportApprovalToken.acknowledged == True)
+    
+    report_type = request.args.get('type')
+    if report_type:
+        query = query.filter(ReportApprovalToken.report_type == report_type)
+    
+    limit = int(request.args.get('limit', 100))
+    tokens = query.limit(limit).all()
+    
+    return jsonify({
+        'tokens': [{
+            'token': t.token,
+            'reportId': t.report_id,
+            'reportType': t.report_type,
+            'recipientEmail': t.recipient_email,
+            'sentByUserName': t.sent_by_user_name,
+            'createdAt': t.created_at.isoformat() if t.created_at else None,
+            'expiresAt': t.expires_at.isoformat() if t.expires_at else None,
+            'acknowledged': t.acknowledged,
+            'acknowledgedAt': t.acknowledged_at.isoformat() if t.acknowledged_at else None,
+            'acknowledgedByUserName': t.acknowledged_by_user_name,
+            'deviceFingerprint': t.device_fingerprint,
+            'reportData': t.report_data
+        } for t in tokens],
+        'count': len(tokens)
+    })
+
+
+

@@ -22,11 +22,11 @@ def wait_for_db():
 
     # Extraer host y usuario para el log (sin mostrar password)
     try:
-        # Format: postgresql://user:pass@host/db
-        creds = DATABASE_URL.split('@')[0].split('//')[1]
-        db_user = creds.split(':')[0]
-        db_host = DATABASE_URL.split('@')[1].split('/')[0]
-    except (IndexError, AttributeError):
+        from urllib.parse import urlparse
+        parsed = urlparse(DATABASE_URL)
+        db_user = parsed.username or "desconocido"
+        db_host = parsed.hostname or "localhost"
+    except Exception:
         db_host = "desconocido"
         db_user = "desconocido"
 

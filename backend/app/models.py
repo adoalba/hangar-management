@@ -1,15 +1,26 @@
 
 import os
-from sqlalchemy import create_engine, Column, String, Boolean, Text, JSON, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, String, Boolean, Text, JSON, DateTime, ForeignKey, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+
 # --- CONFIGURACIÓN CENTRALIZADA DE LA CAPA DE DATOS ---
-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///./inventory.db')
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL)
-else:
-    engine = create_engine(DATABASE_URL, pool_size=20, max_overflow=0)
+from .config import Paths
+
+# DATABASE CONNECTION STRATEGY
+# Mandate: Use Immutable DB_PATH from Paths class
+# Logic: sqlite:////app/data/inventory.db (4 slashes for absolute Unix path)
+
+DATABASE_URL = f"sqlite:///{Paths.DB_PATH}"
+
+# Ensure Data Directory Exists at Module Level (Safety Net)
+os.makedirs(os.path.dirname(Paths.DB_PATH), exist_ok=True)
+
+# RETRY LOGIC / BUSY TIMEOUT
+# timeout=30 seconds (Wait 30s before throwing 'database is locked')
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 30})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -62,9 +73,11 @@ class AviationPart(Base):
     technician_name = Column(String)
     technician_license = Column(String)
     technician_signature = Column(Text)
+    technician_signature_metadata = Column(JSON, nullable=True)
     inspector_name = Column(String)
     inspector_license = Column(String)
     inspector_signature = Column(Text)
+    inspector_signature_metadata = Column(JSON, nullable=True)
     signed_by_technician = Column(Boolean, default=False)
     signed_by_inspector = Column(Boolean, default=False)
 
@@ -125,6 +138,7 @@ class ReportApprovalToken(Base):
     device_fingerprint = Column(String, nullable=True)
 
 
+
 class Contact(Base):
     """
     Directory of frequent contacts for report dispatch.
@@ -138,3 +152,63 @@ class Contact(Base):
     role = Column(String) # E.g. 'Quality Manager', 'External', etc.
     created_at = Column(DateTime, nullable=False)
 
+
+class ReportSnapshot(Base):
+    """
+    Immutable snapshot of report data for audit and consistent export.
+    Stores the exact data returned at generation time.
+    """
+    __tablename__ = "report_snapshots"
+
+    id = Column(String, primary_key=True) # Matches report_id (RPT-...)
+    report_type = Column(String, nullable=False)
+    content_snapshot = Column(JSON, nullable=False) # The actual report data
+    
+    # Metadata fields
+    created_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime, nullable=True) # For cache management
+    
+    # User requested fields
+    created_by = Column(String, index=True) # Unified field as requested
+    row_count = Column(String) # For quick stats without parsing JSON (using String to match other count fields in project)
+
+
+class ComplianceLog(Base):
+    """
+    Audit log for system health, reconciliation actions, and critical errors.
+    Separate from operational report logs.
+    """
+    __tablename__ = "compliance_logs"
+    
+    id = Column(String, primary_key=True) # UUID
+    timestamp = Column(DateTime, nullable=False)
+    event_type = Column(String, index=True, nullable=False) # RECONCILIATION, SNAPSHOT_FIX, SAVE_FAILURE
+    severity = Column(String, nullable=False) # INFO, WARNING, CRITICAL
+    component = Column(String, index=True) # e.g. 'Reports', 'Inventory'
+    details = Column(JSON) # Detailed context
+    user_id = Column(String, nullable=True) # System or Admin ID
+
+
+
+class ReportArchive(Base):
+    """
+    Physical Archive Log with strict Traceability to Inventory Items.
+    Managed via ACID transaction: Database Record <-> File on Disk.
+    """
+    __tablename__ = "report_archives"
+    
+    id = Column(String, primary_key=True) # UUID
+    report_id = Column(String, index=True, nullable=False)
+    filename = Column(String, nullable=False)
+    file_path = Column(Text, nullable=False) # Absolute path
+    created_at = Column(DateTime, nullable=False)
+    
+    # Traceability (Nullable, as some reports are 'Total Inventory')
+    related_part_id = Column(String, ForeignKey("parts.id"), nullable=True, index=True)
+    
+    # Integrity
+    file_size_bytes = Column(Integer)
+    checksum_sha256 = Column(String) # Stronger than MD5
+    
+    # Context
+    user_id = Column(String, nullable=True) # Who generated it

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; color: #333; }
+        .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background-color: #1a1a1a; color: #ffffff; padding: 20px; text-align: center; border-bottom: 4px solid #b8860b; }
+        .header h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+        .content { padding: 30px; }
+        .metric-card { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; margin-bottom: 20px; }
+        .metric-title { font-size: 12px; text-transform: uppercase; color: #6c757d; font-weight: bold; margin-bottom: 5px; }
+        .metric-value { font-size: 24px; font-weight: bold; color: #212529; }
+        .status-ok { color: #28a745; }
+        .status-error { color: #dc3545; }
+        .table-container { margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 10px; border-bottom: 2px solid #dee2e6; color: #495057; }
+        td { padding: 10px; border-bottom: 1px solid #dee2e6; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #6c757d; border-top: 1px solid #dee2e6; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: #e9ecef; color: #495057; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>System Weekly Report</h1>
+            <p style="margin: 5px 0 0 0; font-size: 12px; opacity: 0.8;">{{ date }} | Server: {{ hostname }}</p>
+        </div>
+        
+        <div class="content">
+            <!-- SYSTEM HEALTH -->
+            <div class="metric-card">
+                <div class="metric-title">System Health</div>
+                <div class="metric-value">
+                    {% if db_status %}
+                    <span class="status-ok">&#10003; OPERATIONAL</span>
+                    {% else %}
+                    <span class="status-error">&#10007; CRITICAL ERROR</span>
+                    {% endif %}
+                </div>
+                <p style="margin: 5px 0 0; font-size: 13px; color: #666;">Database Latency: {{ db_latency }}ms</p>
+            </div>
+
+            <!-- STORAGE -->
+            <div class="metric-card">
+                <div class="metric-title">Storage Usage (/app/storage)</div>
+                <div class="metric-value">{{ storage_usage }}</div>
+                <p style="margin: 5px 0 0; font-size: 13px; color: #666;">Total files archived: {{ total_files }}</p>
+            </div>
+
+            <!-- ACTIVITY -->
+            <div class="table-container">
+                <h3 style="margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #b8860b; padding-bottom: 5px; display: inline-block;">Weekly Activity (Generated Files)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Count</th>
+                            <th>Trend</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for category, count in activity.items() %}
+                        <tr>
+                            <td><strong>{{ category }}</strong></td>
+                            <td>{{ count }}</td>
+                            <td><span class="badge">ACTIVE</span></td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 20px; color: #999;">No activity recorded this week.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Generated automatically by Unified Persistence Service.</p>
+            <p>Hangar Management System &copy; 2026</p>
+        </div>
+    </div>
+</body>
+</html>

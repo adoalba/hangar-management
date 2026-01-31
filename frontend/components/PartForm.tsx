@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { usePointerType } from '../hooks/usePointerType';
 import { TagColor, AviationPart, RemovalReason } from '../types';
 import { ICONS, BILINGUAL_LABELS, TRANSLATIONS } from '../constants';
 
@@ -15,6 +16,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ label, onSave, initialValue
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasContent, setHasContent] = useState(!!initialValue);
+  const pointerType = usePointerType(); // Global pointer state tracking
 
   const resizeCanvas = () => {
     if (canvasRef.current && containerRef.current) {
@@ -48,12 +50,19 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ label, onSave, initialValue
   };
 
   const startDrawing = (e: React.PointerEvent) => {
+    // Palm Rejection Logic:
+    // If the global state says we are using a PEN, strictly ignore native touch events on the canvas
+    // This prevents the palm (which registers as 'touch') from drawing artifacts while the user holds the pen.
+    if (e.pointerType === 'touch' && pointerType === 'pen') {
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.lineWidth = 3;
+    ctx.lineWidth = e.pointerType === 'pen' ? 2 : 3; // Thinner line for prestige pen
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#818cf8';
 

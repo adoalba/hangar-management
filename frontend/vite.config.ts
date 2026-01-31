@@ -9,9 +9,9 @@ export default defineConfig({
     'process.env': {}
   },
   server: {
-    port: 5173,
+    port: 8080,
     host: '0.0.0.0',
-    strictPort: false,
+    strictPort: true,
     allowedHosts: true,
     watch: {
       usePolling: true,
@@ -19,7 +19,7 @@ export default defineConfig({
     proxy: {
       // Regla única y robusta que redirige todas las llamadas /api al backend
       '/api': {
-        target: 'http://backend:5000',
+        target: 'http://127.0.0.1:5000', // Explicit IPv4 to avoid Node v17+ IPv6 resolution issues
         changeOrigin: true,
         secure: false,
       }
