@@ -1,380 +1,282 @@
 import React, { useState, useMemo } from 'react';
-import { AviationPart, TagColor } from '../types';
 import { ICONS } from '../constants';
+import { toast, Toaster } from 'react-hot-toast';
+import ReportFilters from './ReportFilters';
+import ReportEmailModal from './ReportEmailModal';
 
-interface ReportsModuleProps {
-    inventory: AviationPart[];
-    token: string;
-    t: any;
+interface ReportsModuleProps { inventory: any[];[key: string]: any; }
+
+interface FiltersState {
+    locations: string[];
+    statuses: string[];
+    dateFrom: string;
+    dateTo: string;
+    category: string;
+    pnSearch: string;
 }
 
-export const ReportsModule: React.FC<ReportsModuleProps> = ({ inventory, token, t }) => {
-    // --- ESTADOS ---
-    const [selectedReport, setSelectedReport] = useState<'INVENTORY' | 'LOCATION' | 'STATUS' | 'PN'>('INVENTORY');
-    const [filters, setFilters] = useState({
-        search: '',
-        status: '',
-        startDate: '',
-        endDate: ''
+const ReportsModule: React.FC<ReportsModuleProps> = ({ inventory = [] }) => {
+    const [reportType, setReportType] = useState('INVENTORY');
+    const [filters, setFilters] = useState<FiltersState>({
+        locations: [],
+        statuses: [],
+        dateFrom: '',
+        dateTo: '',
+        category: '',
+        pnSearch: ''
     });
-    const [exporting, setExporting] = useState(false);
+    const [showEmailModal, setShowEmailModal] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
-    // Toast simulation
-    const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'loading', text: string } | null>(null);
+    // --- 1. DYNAMIC LOCATIONS (REAL TIME) ---
+    // Extracts unique locations from the actual inventory data
+    const availableLocations = useMemo(() => {
+        const locs = inventory.map(i => i.location || i.physical_location).filter(Boolean);
+        return Array.from(new Set(locs)).sort();
+    }, [inventory]);
 
-    // Helper para status
-    const getStatusLabel = (tagColor: string) => {
-        if (tagColor === 'YELLOW') return 'SERVICEABLE';
-        if (tagColor === 'GREEN') return 'REPAIRABLE';
-        if (tagColor === 'RED') return 'UNSERVICEABLE';
-        if (tagColor === 'WHITE') return 'REMOVED-OK';
-        return tagColor;
+    // --- 2. AVIATION STANDARD MAPPING ---
+    const getStandardCondition = (item: any) => {
+        // Priority: Explicit Status > Tag Color > Default
+        const status = (item.status || '').toUpperCase();
+        const color = (item.tagColor || item.color || '').toUpperCase();
+
+        if (['SERVICEABLE', 'REPAIRABLE', 'UNSERVICEABLE', 'SCRAP'].includes(status)) return status;
+
+        // Map Colors to Card Names (The "Add Component" Logic)
+        if (color === 'YELLOW') return 'SERVICEABLE';
+        if (color === 'GREEN') return 'REPAIRABLE';
+        if (color === 'RED') return 'UNSERVICEABLE';
+        if (color === 'BLUE' || color === 'WHITE') return 'REMOVED NOT DEFECT';
+
+        return 'UNKNOWN';
     };
 
-    // --- 1. LÓGICA DE FILTRADO (VISTA PREVIA) ---
+    // --- 3. FILTER ENGINE ---
     const previewData = useMemo(() => {
-        if (!inventory) return [];
+        let data = inventory.filter(item => {
+            const pn = (item.part_number || item.pn || '').toLowerCase();
+            const stdStatus = getStandardCondition(item);
 
-        return inventory.filter(item => {
-            const statusLabel = getStatusLabel(item.tagColor);
+            // Search P/N
+            if (filters.pnSearch && !pn.includes(filters.pnSearch.toLowerCase())) return false;
 
-            // A. Búsqueda Texto
-            const term = filters.search.toLowerCase();
-            let matchesSearch = true;
-
-            if (term) {
-                if (selectedReport === 'PN') matchesSearch = (item.pn || '').toLowerCase().includes(term);
-                else if (selectedReport === 'LOCATION') matchesSearch = (item.location || '').toLowerCase().includes(term);
-                else matchesSearch =
-                    (item.pn || '').toLowerCase().includes(term) ||
-                    (item.partName || '').toLowerCase().includes(term) ||
-                    (item.location || '').toLowerCase().includes(term);
+            // Filter Location (Dynamic)
+            if (filters.locations.length > 0) {
+                const itemLoc = item.location || item.physical_location;
+                if (!filters.locations.includes(itemLoc)) return false;
             }
 
-            // B. Filtro Status
-            const matchesStatus = !filters.status || statusLabel === filters.status;
+            // Filter Status (Standardized)
+            if (filters.statuses.length > 0 && !filters.statuses.includes(stdStatus)) return false;
 
-            // C. Filtro Fechas
-            let matchesDate = true;
-            if (filters.startDate || filters.endDate) {
-                const dateStr = item.registrationDate || new Date().toISOString();
-                const itemDate = new Date(dateStr);
-                if (filters.startDate && itemDate < new Date(filters.startDate)) matchesDate = false;
-                if (filters.endDate) {
-                    const end = new Date(filters.endDate);
-                    end.setHours(23, 59, 59);
-                    if (itemDate > end) matchesDate = false;
-                }
+            // Filter Date
+            if (filters.dateFrom || filters.dateTo) {
+                const d = new Date(item.created_at || item.registrationDate || Date.now());
+                if (filters.dateFrom && d < new Date(filters.dateFrom)) return false;
+                if (filters.dateTo && d > new Date(filters.dateTo)) return false;
             }
-
-            return matchesSearch && matchesStatus && matchesDate;
+            return true;
         });
-    }, [inventory, selectedReport, filters]);
 
-    // --- 2. PREPARACIÓN DE DATOS (DICCIONARIO UNIVERSAL) ---
-    const prepareDataForBackend = () => {
-        return previewData.map(item => {
-            const statusLabel = getStatusLabel(item.tagColor);
-            return {
-                ...item,
-                // MAPEO PARA PDF (Rellenar huecos del template)
-                part_name: item.partName || 'N/A',        // El PDF espera 'part_name' or 'description'
-                description: item.partName || 'N/A',
-                desc: item.partName || 'N/A',
-
-                brand_model: 'N/A',                       // Dato no disponible en inventario simple
-
-                traceability: (item as any).traceability || 'N/A',
-
-                condition: statusLabel || 'N/A',          // El PDF espera 'condition'
-                cond: statusLabel || 'N/A',
-                status: statusLabel || 'N/A',
-
-                location: item.location || 'N/A',
-                loc: item.location || 'N/A',
-                bin_shelf: item.location || 'N/A',        // Reutilizamos location
-
-                // Variantes extra por seguridad
-                pn: item.pn,
-                partNumber: item.pn,
-                part_number: item.pn,
-
-                qty: 1,
-                quantity: 1,
-
-                serial_number: item.sn,
-                sn: item.sn
-            };
+        // Sorting
+        return data.sort((a, b) => {
+            if (reportType === 'LOCATION') return (a.location || '').localeCompare(b.location || '');
+            if (reportType === 'STATUS') return getStandardCondition(a).localeCompare(getStandardCondition(b));
+            return (a.part_number || '').localeCompare(b.part_number || '');
         });
-    };
+    }, [inventory, filters, reportType]);
 
-    // --- 3. EXPORTACIÓN PDF / EMAIL ---
-    const handleServerExport = async (format: 'PDF' | 'EMAIL') => {
-        if (previewData.length === 0) {
-            setToastMessage({ type: 'error', text: "No hay datos para procesar" });
-            setTimeout(() => setToastMessage(null), 3000);
-            return;
-        }
-        setExporting(true);
-        setToastMessage({ type: 'loading', text: `Procesando ${format}...` });
+    // --- 4. EXPORT HANDLER ---
+    const handleDownload = async (format: 'PDF' | 'EXCEL') => {
+        if (previewData.length === 0) return toast.error("No hay datos para exportar");
+        setIsExporting(true);
+        const toastId = toast.loading(`Generando reporte...`);
 
         try {
-            const endpoint = format === 'EMAIL' ? '/api/reports/v2/email' : '/api/reports/v2/generate';
-            const robustData = prepareDataForBackend();
+            // Prepare Payload with Standardized Data
+            const fullPayload = previewData.map(item => ({
+                pn: item.part_number || item.pn || 'N/A',
+                desc: item.partName || item.description || 'UNKNOWN',
+                qty: item.quantity || item.qty || '1',
+                loc: item.location || 'UNASSIGNED',
+                cond: getStandardCondition(item), // <--- ENFORCED STANDARD
 
-            const response = await fetch(endpoint, {
+                // Tech Data (6 Fields)
+                tsn: item.tsn || item.time_since_new || '-',
+                csn: item.csn || item.cycles_since_new || '-',
+                tso: item.tso || item.time_since_overhaul || '-',
+                cso: item.cso || item.cycles_since_overhaul || '-',
+                tsr: item.tsr || '-',
+                csr: item.csr || '-',
+
+                // Trace
+                sn: item.serial_number || item.sn || 'N/A',
+                manuf: item.manufacturer || item.brand || 'N/A',
+                lot: item.lot_number || item.lot || 'N/A',
+                exp: item.expiration_date || item.expiry || 'N/A',
+                trace: item.traceability || item.source || 'N/A',
+                tag_date: item.tag_date || item.registrationDate || 'N/A',
+                uom: item.uom || 'EA'
+            }));
+
+            // Generate Filename Label
+            const reportLabel = reportType === 'BY_PN' ? 'PART_HISTORY' : reportType;
+
+            const response = await fetch('/api/reports/download', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('session_token')}` },
                 body: JSON.stringify({
-                    reportType: selectedReport,
-                    filters: filters,
-                    data: robustData, // Enviamos datos mapeados
-                    format: format // Para que el backend sepa (si lo usa)
+                    reportData: {
+                        data: fullPayload,
+                        reportType: reportLabel,
+                        reportId: `WCA-${Date.now().toString().slice(-6)}`
+                    },
+                    format
                 })
             });
 
-            if (!response.ok) throw new Error(await response.text());
-
-            if (format === 'EMAIL') {
-                const resJson = await response.json();
-                setToastMessage({ type: 'success', text: resJson.message || "Correo enviado" });
-            } else {
-                // DESCARGA PDF
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `WCA_Report_${selectedReport}_${Date.now()}.pdf`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                window.URL.revokeObjectURL(url);
-                setToastMessage({ type: 'success', text: "PDF generado" });
-            }
-        } catch (err: any) {
-            console.error(err);
-            setToastMessage({ type: 'error', text: "Error: " + err.message });
-        } finally {
-            setExporting(false);
-            setTimeout(() => setToastMessage(null), 3000);
-        }
-    };
-
-    // --- 4. EXPORTACIÓN EXCEL LOCAL (CSV) ---
-    const downloadExcel = () => {
-        if (previewData.length === 0) {
-            setToastMessage({ type: 'error', text: "Sin datos" });
-            setTimeout(() => setToastMessage(null), 3000);
-            return;
-        }
-
-        try {
-            // Generar CSV con BOM para que Excel abra bien los acentos
-            const headers = ["Part Number", "Description", "Location", "Status", "Qty", "Traceability"];
-            const rows = previewData.map(i => {
-                const statusLabel = getStatusLabel(i.tagColor);
-                return [
-                    `"${i.pn || ''}"`,
-                    `"${i.partName || ''}"`,
-                    `"${i.location || ''}"`,
-                    `"${statusLabel || ''}"`,
-                    1, // Quantity hardcoded
-                    `"${(i as any).traceability || ''}"`
-                ];
-            });
-
-            const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `WCA_Export_${Date.now()}.csv`; // CSV abre en Excel
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setToastMessage({ type: 'success', text: "Excel descargado" });
+            if (!response.ok) throw new Error("Error en servidor");
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Standardized Filename
+            const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            a.download = `WCA_${reportLabel}_${dateStr}.${format === 'EXCEL' ? 'xlsx' : 'pdf'}`;
+            document.body.appendChild(a); a.click(); a.remove();
+            toast.success("Descarga exitosa", { id: toastId });
         } catch (e) {
             console.error(e);
-            setToastMessage({ type: 'error', text: "Error creando Excel" });
+            toast.error("Error al exportar", { id: toastId });
         } finally {
-            setTimeout(() => setToastMessage(null), 3000);
+            setIsExporting(false);
         }
     };
 
-    // --- RENDERIZADO (DISEÑO CLEAN UI - IMAGEN 4) ---
-    return (
-        <div className="p-6 bg-gray-50 min-h-screen font-sans text-gray-800">
-            {/* TOAST OVERLAY */}
-            {toastMessage && (
-                <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-xl font-bold text-white transition-all transform translate-y-0 opacity-100 ${toastMessage.type === 'success' ? 'bg-emerald-600' :
-                        toastMessage.type === 'error' ? 'bg-rose-600' : 'bg-slate-800'
-                    }`}>
-                    {toastMessage.type === 'loading' && <ICONS.Refresh className="inline-block animate-spin mr-2" size={18} />}
-                    {toastMessage.text}
-                </div>
-            )}
+    // Styles
+    const styles = {
+        container: { backgroundColor: '#0B1221', minHeight: '100vh', color: 'white' },
+        card: { backgroundColor: '#151E32', border: '1px solid #2D3748', borderRadius: '12px', cursor: 'pointer' },
+        active: { backgroundColor: '#2563EB', borderColor: '#2563EB', color: 'white', boxShadow: '0 0 15px rgba(37, 99, 235, 0.3)' }
+    };
 
-            {/* Header */}
-            <div className="mb-6 flex justify-between items-end border-b pb-4 border-gray-200">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Reportes WCA</h1>
-                    <p className="text-sm text-gray-500">Gestión de inventario y exportaciones.</p>
+    return (
+        <div style={styles.container} className="p-6 font-sans">
+            <Toaster position="top-right" toastOptions={{ style: { background: '#1E293B', color: '#fff', border: '1px solid #334155' } }} />
+
+            <div className="flex justify-between items-center mb-8">
+                <h1 className="text-2xl font-black text-white">CENTRO DE REPORTES</h1>
+                <div className="text-right bg-[#151E32] px-4 py-2 rounded-xl border border-slate-700">
+                    <p className="text-[10px] text-slate-400">USUARIO</p>
+                    <p className="text-sm font-bold">ADMIN</p>
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {[
-                    { id: 'INVENTORY', label: 'Inventario Total', icon: ICONS.Inventory }, // Adapted Box to Inventory
-                    { id: 'LOCATION', label: 'Por Ubicación', icon: ICONS.MapPin },
-                    { id: 'STATUS', label: 'Por Estado', icon: ICONS.Layers },
-                    { id: 'PN', label: 'Por P/N', icon: ICONS.Search },
-                ].map(tab => (
+                    { id: 'INVENTORY', l: 'INVENTARIO GLOBAL', i: ICONS.Inventory },
+                    { id: 'STATUS', l: 'POR CONDICIÓN', i: ICONS.Layers },
+                    { id: 'LOCATION', l: 'POR UBICACIÓN', i: ICONS.MapPin },
+                    { id: 'BY_PN', l: 'POR P/N', i: ICONS.Search }
+                ].map(t => (
                     <button
-                        key={tab.id}
-                        onClick={() => { setSelectedReport(tab.id as any); setFilters({ search: '', status: '', startDate: '', endDate: '' }); }}
-                        className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all ${selectedReport === tab.id
-                                ? 'bg-white border-blue-500 text-blue-600 shadow-md ring-1 ring-blue-500'
-                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                            }`}
-                    >
-                        <tab.icon size={20} />
-                        <span className="font-bold text-sm uppercase">{tab.label}</span>
+                        key={t.id}
+                        onClick={() => {
+                            setReportType(t.id);
+                            setFilters({ locations: [], statuses: [], dateFrom: '', dateTo: '', category: '', pnSearch: '' });
+                        }}
+                        style={{ ...styles.card, ...(reportType === t.id ? styles.active : {}) }}
+                        className="p-6 flex flex-col items-center gap-3 hover:scale-[1.02] transition-all">
+                        {t.i && <t.i size={28} className={reportType === t.id ? 'text-white' : 'text-slate-500'} />}
+                        <span className="text-[10px] font-black uppercase tracking-wider">{t.l}</span>
                     </button>
                 ))}
             </div>
 
-            {/* Barra de Filtros y Acciones */}
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
-                <div className="flex flex-col xl:flex-row gap-4 items-end">
+            <ReportFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                availableLocations={availableLocations}
+                showPnSearch={reportType === 'BY_PN'}
+                t={{}}
+            />
 
-                    {/* Buscador */}
-                    <div className="flex-1 w-full">
-                        <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Búsqueda</label>
-                        <input
-                            type="text"
-                            placeholder="Buscar P/N..."
-                            className="w-full h-10 px-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                            value={filters.search}
-                            onChange={e => setFilters({ ...filters, search: e.target.value })}
-                        />
-                    </div>
-
-                    {/* Select Status */}
-                    <div className="w-full md:w-40">
-                        <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Tipo de Tarjeta</label>
-                        <select
-                            className="w-full h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm bg-white"
-                            value={filters.status}
-                            onChange={e => setFilters({ ...filters, status: e.target.value })}
-                        >
-                            <option value="">Todos</option>
-                            <option value="SERVICEABLE">Serviceable</option>
-                            <option value="REPAIRABLE">Repairable</option>
-                            <option value="UNSERVICEABLE">Unserviceable</option>
-                            <option value="REMOVED-OK">Removed OK</option>
-                        </select>
-                    </div>
-
-                    {/* Fechas */}
-                    <div className="flex gap-2 w-full md:w-auto">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Desde</label>
-                            <input
-                                type="date"
-                                className="h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm"
-                                value={filters.startDate}
-                                onChange={e => setFilters({ ...filters, startDate: e.target.value })}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Hasta</label>
-                            <input
-                                type="date"
-                                className="h-10 px-3 border border-gray-300 rounded-lg outline-none text-sm"
-                                value={filters.endDate}
-                                onChange={e => setFilters({ ...filters, endDate: e.target.value })}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Botones (Restaurados Colores de Imagen 4) */}
-                    <div className="flex gap-2 w-full xl:w-auto pt-4 xl:pt-0 border-t xl:border-t-0 border-gray-100">
-                        <button
-                            onClick={() => handleServerExport('PDF')}
-                            disabled={exporting}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black font-medium text-sm transition-colors"
-                        >
-                            <ICONS.Printer size={16} /> PDF
-                        </button>
-
-                        <button
-                            onClick={downloadExcel}
-                            disabled={exporting}
-                            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 font-medium text-sm transition-colors"
-                        >
-                            <ICONS.Spreadsheet size={16} /> Excel
-                        </button>
-
-                        <button
-                            onClick={() => handleServerExport('EMAIL')}
-                            disabled={exporting}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm transition-colors"
-                        >
-                            <ICONS.Mail size={16} /> Email
-                        </button>
-                    </div>
+            <div className="bg-[#151E32] border border-slate-700 p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between mb-8 shadow-xl">
+                <div className="text-xs font-bold text-slate-400 uppercase">{previewData.length} REGISTROS</div>
+                <div className="flex gap-3 w-full md:w-auto">
+                    <button
+                        onClick={() => handleDownload('PDF')}
+                        disabled={isExporting}
+                        className="flex-1 px-6 py-3 bg-[#1E293B] border border-slate-600 text-white rounded-xl font-bold text-xs hover:bg-slate-700 flex items-center justify-center gap-2">
+                        <ICONS.Printer size={16} /> PDF
+                    </button>
+                    <button
+                        onClick={() => handleDownload('EXCEL')}
+                        disabled={isExporting}
+                        className="flex-1 px-6 py-3 bg-emerald-900/30 border border-emerald-500/50 text-emerald-400 rounded-xl font-bold text-xs hover:bg-emerald-900/50 flex items-center justify-center gap-2">
+                        <ICONS.Spreadsheet size={16} /> EXCEL
+                    </button>
+                    <button
+                        onClick={() => setShowEmailModal(true)}
+                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-500 flex items-center justify-center gap-2">
+                        <ICONS.Mail size={16} /> EMAIL
+                    </button>
                 </div>
             </div>
 
-            {/* Vista Previa */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wider">Vista Previa</h3>
-                    <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded text-xs font-bold">{previewData.length} registros</span>
-                </div>
+            <div className="bg-[#151E32] rounded-3xl border border-slate-700 overflow-hidden shadow-lg">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-white text-gray-500 border-b border-gray-100 uppercase text-xs font-bold">
+                    <table className="w-full text-left text-sm text-slate-400">
+                        <thead className="bg-[#0F1623] text-slate-200 text-[10px] uppercase font-bold tracking-wider">
                             <tr>
-                                <th className="p-4">Part Number</th>
-                                <th className="p-4">Descripción</th>
-                                <th className="p-4">Ubicación</th>
-                                <th className="p-4">Estado</th>
-                                <th className="p-4 text-center">Qty</th>
+                                <th className="p-5">P/N</th>
+                                <th className="p-5">DESC</th>
+                                <th className="p-5">LOC</th>
+                                <th className="p-5">CONDICIÓN</th>
+                                <th className="p-5 text-right">QTY</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {previewData.length > 0 ? previewData.map((item, idx) => {
-                                const statusLabel = getStatusLabel(item.tagColor);
-                                return (
-                                    <tr key={idx} className="hover:bg-gray-50">
-                                        <td className="p-4 font-bold text-gray-800">{item.pn}</td>
-                                        <td className="p-4 text-gray-600">{item.partName}</td>
-                                        <td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs border border-gray-200">{item.location}</span></td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${statusLabel === 'SERVICEABLE' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                    statusLabel === 'REPAIRABLE' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                        statusLabel === 'UNSERVICEABLE' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                            statusLabel === 'REMOVED-OK' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                                                'bg-gray-50 text-gray-600 border-gray-200'
-                                                }`}>
-                                                {statusLabel}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center font-bold">1</td>
-                                    </tr>
-                                )
-                            }) : (
-                                <tr><td colSpan={5} className="p-8 text-center text-gray-400">Sin resultados</td></tr>
-                            )}
+                        <tbody className="divide-y divide-slate-700/50">
+                            {previewData.slice(0, 50).map((i, idx) => (
+                                <tr key={idx} className="hover:bg-slate-800/50 transition-colors">
+                                    <td className="p-5 font-mono text-blue-400 font-bold">{i.part_number || i.pn}</td>
+                                    <td className="p-5 text-white">{i.partName || i.description}</td>
+                                    <td className="p-5">
+                                        <span className="bg-[#1E293B] border border-slate-700 px-2 py-1 rounded text-[10px] font-bold text-slate-300">
+                                            {i.location}
+                                        </span>
+                                    </td>
+                                    <td className="p-5">
+                                        <span className={`px-2 py-1 rounded text-[10px] font-black border ${getStandardCondition(i) === 'SERVICEABLE' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' :
+                                            getStandardCondition(i) === 'REPAIRABLE' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                                                getStandardCondition(i) === 'UNSERVICEABLE' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                                    'bg-slate-700 text-white'
+                                            }`}>
+                                            {getStandardCondition(i)}
+                                        </span>
+                                    </td>
+                                    <td className="p-5 text-right text-white font-bold font-mono">{i.quantity || i.qty}</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            <ReportEmailModal
+                isOpen={showEmailModal}
+                onClose={() => setShowEmailModal(false)}
+                reportData={{
+                    data: previewData.map(i => ({ ...i, cond: getStandardCondition(i) })),
+                    reportType,
+                    reportId: `WCA-${Date.now().toString().slice(-6)}`
+                }}
+                token={localStorage.getItem('session_token') || ''}
+                t={{}}
+                onSuccess={() => toast.success("Email enviado exitosamente")}
+                onError={(m) => toast.error(m)}
+            />
         </div>
     );
 };

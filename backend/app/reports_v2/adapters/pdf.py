@@ -1,139 +1,248 @@
-
 import io
 import logging
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, KeepTogether
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from xhtml2pdf import pisa
 
 logger = logging.getLogger(__name__)
 
 def generate_pdf_v2(snapshot: dict) -> bytes:
     """
-    V2 PDF Generator: 
-    - Zero External Dependencies (No Logos)
-    - High Contrast (Black/White)
-    - Fail-Safe (Try/Except Wrapper)
-    - Portrait Efficiency
+    V2 PDF Generator: HTML/CSS to PDF via xhtml2pdf.
+    Implements 'Card/Ficha' design for Aviation Reports.
     """
     try:
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer, 
-            pagesize=A4,
-            rightMargin=40, leftMargin=40, topMargin=85, bottomMargin=40
-        )
-        
-        elements = []
-        styles = getSampleStyleSheet()
-
-        # Canvas Drawing Function for Fixed Header (x=140, y=15 from top)
-        # Note: ReportLab origin (0,0) is bottom-left. A4 is ~595x842.
-        # Top-left y=15 means y ~ 827. 
-        
-        def header_footer(canvas, doc):
-            canvas.saveState()
-            
-            # HEADER: "WORLD CLASS AVIATION" at x=130, y~Top (832)
-            canvas.setFont('Helvetica-Bold', 16)
-            canvas.setFillColor(colors.black)
-            canvas.drawString(130, 832, "WORLD CLASS AVIATION") 
-            
-            # Subheader info
-            canvas.setFont('Helvetica', 10)
-            report_id = snapshot.get('reportId', 'N/A')
-            report_type = snapshot.get('reportType', 'Inventory Report').replace('_', ' ').title()
-            gen_date = snapshot.get('generatedAt', '').split('T')[0]
-            
-            canvas.drawString(130, 817, f"{report_type} | {report_id}")
-            canvas.drawString(130, 802, f"Generated: {gen_date} | User: {snapshot.get('generatedBy', 'System')}")
-            
-            canvas.restoreState()
-
-        # Update doc logic to use this onPage
-        # We remove standard flowables for header since we draw them now
-        
-        # 2. Summary Table (B/W)
-        summary = snapshot.get('summary', {})
-        s_data = [
-            ['Total Items', str(summary.get('total', 0))],
-            ['Serviceable', str(summary.get('byStatus', {}).get('YELLOW', 0))],
-            ['Repairable', str(summary.get('byStatus', {}).get('GREEN', 0))],
-            ['Removed', str(summary.get('byStatus', {}).get('WHITE', 0))],
-            ['Rejected', str(summary.get('byStatus', {}).get('RED', 0))]
-        ]
-        
-        t_summary = Table(s_data, colWidths=[200, 100], hAlign='CENTER')
-        t_summary.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
-        ]))
-        
-        # Add a Spacer to push content down below the drawn header
-        # The header takes up space from 842 down to ~760. 
-        # Content starts at topMargin=60 (invaded). Need margin-top=40 for Tables relative to header space.
-        # We'll just set topMargin on DocTemplate to clear the header area.
-        # Header ends at 770. So topMargin should be ~100 (842-742).
-        elements.append(Spacer(1, 20)) # Small spacer if needed or rely on margins
-        elements.append(t_summary)
-        elements.append(Spacer(1, 40)) # "Margin-top 40 para la sección de tablas" request interpreted as spacing
-        
-        # 3. Items List
-        items = snapshot.get('items', [])
-        
+        # 1. Prepare Data
+        items = snapshot.get('data', []) # Access 'data' directly from payload or defaults
         if not items:
-            elements.append(Paragraph("No records found.", styles['Normal']))
-        else:
-            # Item Style
-            label_s = ParagraphStyle('Lbl', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold')
-            val_s = ParagraphStyle('Val', parent=styles['Normal'], fontSize=8, fontName='Helvetica')
-            
-            for item in items:
-                # 2-Col Grid
-                # Row 1: Header
-                header_txt = f"P/N: {item['pn']} | S/N: {item['sn']} | {item['statusLabel'].upper()}"
-                
-                # Row 2: Data
-                # Flatten important fields
-                # We use a nested table for the item details
-                detail_data = [
-                    [Paragraph('Part Name', label_s), Paragraph(item['partName'], val_s),
-                     Paragraph('Location', label_s), Paragraph(item['location'], val_s)],
-                     
-                    [Paragraph('Brand/Model', label_s), Paragraph(f"{item['brand']} / {item['model']}", val_s),
-                     Paragraph('Bin/Shelf', label_s), Paragraph(item['physicalStorageLocation'], val_s)],
-                     
-                    [Paragraph('Traceability', label_s), Paragraph(f"Reg: {item['registrationDate']}", val_s),
-                     Paragraph('Condition', label_s), Paragraph(item['statusLabel'], val_s)],
-                ]
-                
-                t_item = Table(detail_data, colWidths=[70, 190, 70, 190])
-                t_item.setStyle(TableStyle([
-                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ]))
-                
-                # Header Box
-                t_head = Table([[Paragraph(header_txt, label_s)]], colWidths=[520])
-                t_head.setStyle(TableStyle([
-                    ('BOX', (0,0), (-1,-1), 1, colors.black),
-                    ('BACKGROUND', (0,0), (-1,-1), colors.white),
-                ]))
-                
-                elements.append(KeepTogether([t_head, t_item, Spacer(1, 15)]))
+            # Fallback if snapshot structure differs (e.g. from DB fetch)
+            items = snapshot.get('items', [])
 
-        doc.build(elements, onFirstPage=header_footer, onLaterPages=header_footer)
+        # Metadata
+        meta = {
+            'company': snapshot.get('companyName', 'WORLD CLASS AVIATION'),
+            'title': snapshot.get('reportTitle', 'AVIATION REPORT'),
+            'tech': snapshot.get('technician', 'N/A'),
+            'sup': snapshot.get('supervisor', 'N/A'),
+            'date': snapshot.get('generatedAt', 'N/A'),
+            'total_qty': snapshot.get('grandTotalQty', 0),
+            'total_items': snapshot.get('totalItems', len(items))
+        }
+
+        # 2. HTML Template
+        html_template = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                @page {{
+                    size: A4 portrait;
+                    margin: 1cm;
+                    @top-center {{
+                        content: "{meta['company']}";
+                        font-family: Helvetica, sans-serif;
+                        font-weight: bold;
+                        font-size: 16px;
+                    }}
+                    @bottom-center {{
+                        content: "Page " counter(page) " of " counter(pages);
+                        font-family: Helvetica, sans-serif;
+                        font-size: 10px;
+                    }}
+                }}
+                body {{
+                    font-family: Helvetica, sans-serif;
+                    font-size: 12px;
+                    color: #000;
+                }}
+                .header-info {{
+                    width: 100%;
+                    border-bottom: 2px solid #000;
+                    margin-bottom: 20px;
+                    padding-bottom: 10px;
+                }}
+                .header-row {{
+                    display: flex; /* xhtml2pdf support for flex is limited, using table for layout safety */
+                    width: 100%;
+                }}
+                table.header-table {{
+                    width: 100%;
+                    margin-bottom: 10px;
+                }}
+                table.header-table td {{
+                    padding: 2px;
+                }}
+                
+                /* CARD DESIGN */
+                .card {{
+                    border: 1px solid #000;
+                    padding: 10px;
+                    margin-bottom: 10px;
+                    page-break-inside: avoid;
+                    background-color: #fff;
+                }}
+                
+                .card-header {{
+                    background-color: #f0f0f0;
+                    border-bottom: 1px solid #000;
+                    padding: 5px;
+                    font-weight: bold;
+                    margin: -10px -10px 10px -10px; /* Bleed to edge */
+                }}
+
+                /* Grid Layout via Table */
+                table.card-grid {{
+                    width: 100%;
+                    border-collapse: collapse;
+                }}
+                table.card-grid td {{
+                    padding: 4px;
+                    vertical-align: top;
+                    width: 25%;
+                }}
+                
+                .label {{
+                    color: #666;
+                    text-transform: uppercase;
+                    font-size: 8px;
+                    display: block;
+                    margin-bottom: 2px;
+                }}
+                .value {{
+                    font-weight: bold;
+                    color: #000;
+                    font-size: 10px;
+                    word-wrap: break-word; /* Ensure long text wraps */
+                }}
+
+                .status-badge {{
+                    padding: 2px 6px;
+                    border: 1px solid #000;
+                    border-radius: 4px;
+                    font-size: 9px;
+                    text-align: center;
+                    display: inline-block;
+                }}
+
+                .summary-box {{
+                    background: #eee;
+                    border: 2px solid #000;
+                    padding: 15px;
+                    margin-top: 30px;
+                    text-align: right;
+                    font-weight: bold;
+                    page-break-inside: avoid;
+                }}
+            </style>
+        </head>
+        <body>
+            <!-- HEADER -->
+            <div class="header-info">
+                <table class="header-table">
+                    <tr>
+                        <td width="50%">
+                            <div class="label">REPORT TITLE</div>
+                            <div class="value" style="font-size: 14px;">{meta['title']}</div>
+                        </td>
+                        <td width="25%">
+                            <div class="label">GENERATED AT</div>
+                            <div class="value">{meta['date']}</div>
+                        </td>
+                        <td width="25%" style="text-align: right;">
+                             <div class="label">COMPANY</div>
+                             <div class="value">{meta['company']}</div>
+                        </td>
+                    </tr>
+                     <tr>
+                        <td>
+                            <div class="label">TECHNICIAN</div>
+                            <div class="value">{meta['tech']}</div>
+                        </td>
+                        <td>
+                             <div class="label">SUPERVISOR</div>
+                             <div class="value">{meta['sup']}</div>
+                        </td>
+                        <td></td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- ITEMS LOOP -->
+            {''.join([f'''
+            <div class="card">
+                <div class="card-header">
+                    P/N: {item.get('pn','N/A')} <span style="float:right;">QTY: {item.get('qty',1)}</span>
+                </div>
+                <table class="card-grid">
+                    <tr>
+                        <td>
+                            <span class="label">DESCRIPTION</span>
+                            <span class="value">{item.get('desc','N/A')}</span>
+                        </td>
+                        <td>
+                             <span class="label">SERIAL NUMBER</span>
+                             <span class="value">{item.get('sn','N/A')}</span>
+                        </td>
+                         <td>
+                             <span class="label">CONDITION</span>
+                             <div class="value">{item.get('cond','N/A').upper()}</div>
+                        </td>
+                         <td>
+                             <span class="label">LOCATION</span>
+                             <span class="value">{item.get('loc','N/A')}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                             <span class="label">TRACEABILITY</span>
+                             <span class="value">{item.get('trace','N/A')}</span>
+                        </td>
+                        <td>
+                             <span class="label">ORIGIN / SOURCE</span>
+                             <span class="value">{item.get('source','N/A')}</span>
+                        </td>
+                        <td>
+                             <span class="label">TAG DATE</span>
+                             <span class="value">{item.get('tag','N/A')}</span>
+                        </td>
+                        <td>
+                             <span class="label">SHELF LIFE</span>
+                             <span class="value">{item.get('shelf_life','N/A')}</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            ''' for item in items])}
+
+            <!-- SUMMARY BOX -->
+            <div class="summary-box">
+                <div style="font-size: 14px;">TOTAL ITEMS: {meta['total_items']}</div>
+                <div style="font-size: 18px; margin-top: 5px;">GRAND TOTAL QTY: {meta['total_qty']}</div>
+            </div>
+
+        </body>
+        </html>
+        """
+
+        # 3. Generate PDF
+        buffer = io.BytesIO()
+        pisa_status = pisa.CreatePDF(
+            src=html_template,
+            dest=buffer
+        )
+
+        if pisa_status.err:
+            logger.error(f"PDF Generation Error: {pisa_status.err}")
+            raise Exception("PDF Generation Failed")
+
         buffer.seek(0)
         return buffer.getvalue()
 
     except Exception as e:
         logger.error(f"PDF_V2_ERROR: {e}")
-        # EMERGENCY FALLBACK PDF
-        f = io.BytesIO()
-        c = SimpleDocTemplate(f)
-        styles = getSampleStyleSheet()
-        c.build([Paragraph(f"CRITICAL ERROR GENERATING REPORT. ID: {snapshot.get('reportId')}", styles['Heading1'])])
-        f.seek(0)
-        return f.getvalue()
+        # Return error PDF
+        buffer = io.BytesIO()
+        pisa.CreatePDF(
+            src=f"<html><body><h1>Error generating report</h1><p>{str(e)}</p></body></html>",
+            dest=buffer
+        )
+        buffer.seek(0)
+        return buffer.getvalue()

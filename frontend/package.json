@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "html5-qrcode": "^2.3.8",
+    "html2pdf.js": "^0.10.1",
     "lucide-react": "^0.460.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.6.0",
     "recharts": "^3.7.0",
     "terser": "^5.46.0"
   },

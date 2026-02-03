@@ -9,9 +9,10 @@ interface EmailModalProps {
     token: string;
     addToast: (msg: string, type: 'success' | 'error') => void;
     t: any;
+    reportType?: string; // Optional, defaults to 'CARD'
 }
 
-const EmailModal: React.FC<EmailModalProps> = ({ part, onClose, token, addToast, t }) => {
+const EmailModal: React.FC<EmailModalProps> = ({ part, onClose, token, addToast, t, reportType = 'CARD' }) => {
     const [recipient, setRecipient] = useState('');
     const [sending, setSending] = useState(false);
 
@@ -29,7 +30,8 @@ const EmailModal: React.FC<EmailModalProps> = ({ part, onClose, token, addToast,
                 part,
                 "", // aiReport not used in this template
                 (log: EmailLog) => console.log(`[Email Service]: ${log.message}`),
-                token
+                token,
+                reportType // Pass the report type (CARD or TRACEABILITY)
             );
 
             if (success) {

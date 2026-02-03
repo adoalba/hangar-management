@@ -61,7 +61,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
     setError('');
 
     try {
-      const res = await fetch('/api/login-check', {
+      const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -69,7 +69,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, language, setLanguage }) => {
 
       const data = await res.json();
 
-      if (res.ok && data.status === 'success') {
+      if (res.ok) {
         onLogin(data.user, data.token);
       } else {
         setAttempts(prev => prev + 1);

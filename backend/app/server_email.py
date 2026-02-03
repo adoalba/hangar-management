@@ -8,30 +8,56 @@ from email.message import EmailMessage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
+from email.mime.application import MIMEApplication
 
 CONFIG_PATH = "email_config.json"
 logger = logging.getLogger(__name__)
 
 def load_config():
-    """Carga la configuración de correo desde el archivo JSON."""
+    """
+    Carga la configuración de correo desde variables de entorno (prioridad) o archivo JSON.
+    Prioriza ENV VARS para compatibilidad con Docker/Compose.
+    """
+    # 1. PRIORITY: Environment Variables (Docker/Compose)
+    smtp_host = os.environ.get('SMTP_HOST')
+    smtp_port = os.environ.get('SMTP_PORT')
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    
+    # If all ENV vars are set, use them
+    if smtp_host and smtp_user and smtp_pass:
+        logger.info(f"✓ SMTP Config: Using environment variables ({smtp_host}:{smtp_port})")
+        return {
+            "method": "SMTP",
+            "smtp_server": smtp_host,
+            "smtp_port": int(smtp_port) if smtp_port else 587,
+            "smtp_user": smtp_user,
+            "smtp_pass": smtp_pass,
+            "resend_key": "",
+            "resend_from": smtp_user  # Use same as smtp_user
+        }
+    
+    # 2. FALLBACK: JSON File (legacy)
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, 'r') as f:
-                return json.load(f)
+                config = json.load(f)
+                logger.info(f"✓ SMTP Config: Using JSON file ({CONFIG_PATH})")
+                return config
         except Exception as e:
             logger.error(f"Error cargando email_config.json: {e}")
-            
+    
+    # 3. DEFAULT: Empty config (will fail with proper error message)
+    logger.warning("⚠️  SMTP Config: No ENV vars or JSON file found, using empty defaults")
     return {
         "method": "SMTP",
-        "smtp_server": "smtp.gmail.com",
+        "smtp_server": "",
         "smtp_port": 587,
         "smtp_user": "",
         "smtp_pass": "",
         "resend_key": "",
         "resend_from": "operaciones@aerologistics.com"
     }
-
-from email.mime.application import MIMEApplication
 
 def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, attachments=None, files=None):
     """
@@ -62,7 +88,13 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
             password = cfg.get('smtp_pass')
 
             if not server_addr or not user or not password:
-                return False, "Configuración SMTP incompleta (servidor, usuario o clave faltantes)."
+                error_msg = "Configuración SMTP incompleta (servidor, usuario o clave faltantes)."
+                log(f"⚠️  {error_msg}")
+                log(f"   - Server: {'✓' if server_addr else '✗ MISSING'}")
+                log(f"   - User: {'✓' if user else '✗ MISSING'}")
+                log(f"   - Pass: {'✓' if password else '✗ MISSING'}")
+                log(f"   TIP: Set SMTP_HOST, SMTP_USER, SMTP_PASS environment variables")
+                return False, error_msg
 
             # Crear estructura multipart/mixed para soportar adjuntos + contenido relacionado (HTML+Imágenes)
             msg = MIMEMultipart('mixed')
@@ -106,7 +138,6 @@ def send_via_smtp(cfg, recipient, subject, html_body, diagnostic_logs=None, atta
                     try:
                         filename = f.get('filename', 'adjunto')
                         content = f.get('content')
-                        # mimetype = f.get('mimetype', 'application/octet-stream') # MIMEApplication detecta o es genérico
 
                         if content:
                             part = MIMEApplication(content, Name=filename)

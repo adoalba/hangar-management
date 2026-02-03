@@ -17,7 +17,7 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
     const [success, setSuccess] = useState(false);
 
     const t = TRANSLATIONS[language];
-    const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+])[A-Za-z\d!@#$%^&*()_+]{10,}$/;
+    const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{10,}$/;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,7 +38,7 @@ const SetupPassword: React.FC<SetupPasswordProps> = ({ token, language, onSucces
         setIsLoading(true);
 
         try {
-            const res = await fetch('/api/users/setup-password', {
+            const res = await fetch('/api/auth/setup-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token, password })

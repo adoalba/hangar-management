@@ -210,299 +210,82 @@ const checkboxField = (label: string, checked: boolean): string => `
   </td>
 `;
 
-export const sendEmailViaSmtp = async (recipient: string, part: AviationPart, aiReport: string, onLog: (log: EmailLog) => void, token: string): Promise<boolean> => {
+// New signature supports reportType
+export const sendEmailViaSmtp = async (
+  recipient: string,
+  part: AviationPart,
+  aiReport: string, // Kept for signature compatibility but unused
+  onLog: (log: EmailLog) => void,
+  token: string,
+  reportType: string = 'CARD' // New parameter defaulting to 'CARD'
+): Promise<boolean> => {
   const addLog = (msg: string, status: 'info' | 'success' | 'error' = 'info') => {
-    console.log(`[EmailService] Version: INDUSTRIAL-DESIGN-Tv2 - Msg: ${msg}`);
+    console.log(`[EmailService] Sending ${reportType} report via Backend API`);
     onLog({ status, message: msg, timestamp: new Date().toLocaleTimeString() });
   };
 
-  addLog(`Preparando despacho de certificación industrial P/N: ${part.pn}...`);
-
-  // Format shelf life date
-  const shelfLifeDate = part?.shelfLife
-    ? new Date(part.shelfLife).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    : 'N/A';
-
-  // Get tag-specific properties
-  const borderColor = getTagColorHex(part.tagColor);
-  const tagTitle = getTagTitle(part.tagColor);
-
-  // Build certification text based on tag color
-  let certificationText = '';
-  switch (part.tagColor) {
-    case TagColor.YELLOW:
-      certificationText = 'WORLD CLASS AVIATION CERTIFIES that this component/material meets the requirements of applicable manuals and current reference documents. Approved for use as SERVICEABLE MATERIAL. / CERTIFICA que este componente / material cumple con los requisitos de los manuales aplicables y documentos de referencia vigentes. Aprueba este componente como MATERIAL APROBADO para uso.';
-      break;
-    case TagColor.GREEN:
-      certificationText = 'WORLD CLASS AVIATION CERTIFIES that this component/material meets internal manuals and reference document requirements. / CERTIFICA que este componente / material cumple con los requisitos de manuales internos y documentos de referencia.';
-      break;
-    case TagColor.WHITE:
-      certificationText = 'REMOVED FOR DESCRIBED REASON AND MEETS CURRENT REQUIREMENTS. / REMOVIDO POR LA RAZÓN DESCRITA Y CUMPLE CON REQUISITOS VIGENTES.';
-      break;
-    case TagColor.RED:
-      certificationText = 'DOES NOT MEET APPLICABLE REQUIREMENTS. REJECTED FOR USE. / NO CUMPLE REQUISITOS APLICABLES. RECHAZADO PARA USO.';
-      break;
-  }
-
-  // Build Section 04 content dynamically based on tag color
-  let section04Content = '';
-
-  if (part.tagColor === TagColor.YELLOW) {
-    section04Content = `
-      <tr>
-        ${field('SHELF LIFE / FECHA VENC.', `<span style="color: #f43f5e; font-weight: 900;">${shelfLifeDate}</span>`, 12, '25%')}
-      </tr>
-    `;
-  } else if (part.tagColor === TagColor.GREEN || part.tagColor === TagColor.WHITE) {
-    const isGreen = part.tagColor === TagColor.GREEN;
-    section04Content = `
-      <tr>
-        <td colspan="12" style="border: 1px solid black; padding: 0;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
-            <tr>
-              <td width="25%" style="background-color: #f9fafb; border-right: 1px solid black; padding: 4px; text-align: center; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #64748b; font-family: Arial, sans-serif;">
-                REASON:
-              </td>
-              ${isGreen ? `
-                ${checkboxField('TIME', part.removalReason === 'TIME')}
-                ${checkboxField('FAILURE', part.removalReason === 'FAILURE')}
-                ${checkboxField('CONDITION', part.removalReason === 'CONDITION')}
-                ${checkboxField('OTHER', part.removalReason === 'OTHER')}
-              ` : `
-                ${checkboxField('STG', part.removalReason === 'STORAGE')}
-                ${checkboxField('T.SH', part.removalReason === 'TROUBLESHOOTING')}
-                ${checkboxField('ASST', part.removalReason === 'ASSISTANCE')}
-                ${checkboxField('OTH', part.removalReason === 'OTHER')}
-              `}
-            </tr>
-          </table>
-        </td>
-      </tr>
-    `;
-
-    if (part.tagColor === TagColor.WHITE) {
-      section04Content += `
-        <tr>
-          ${field('STORAGE LOC / ALMACÉN', part.physicalStorageLocation || part.location || '', 12, '25%')}
-        </tr>
-      `;
-    }
-  } else if (part.tagColor === TagColor.RED) {
-    section04Content = `
-      <tr>
-        ${field('REJECTION / MOTIVO', `<span style="color: #f43f5e; font-weight: bold;">${part.rejectionReason || ''}</span>`, 12, '25%')}
-      </tr>
-    `;
-  }
-
-  // Build Section 05 content (Tech Report for GREEN cards)
-  let section05TechReport = '';
-  if (part.tagColor === TagColor.GREEN) {
-    section05TechReport = `
-      <tr>
-        <td colspan="12" style="border: 1px solid black; padding: 6px; min-height: 40px; background-color: white; font-family: Arial, sans-serif;">
-          <p style="margin: 0 0 4px 0; font-size: 7px; font-weight: bold; text-transform: uppercase; color: #94a3b8;">TECH REPORT / REPORTE TÉCNICO:</p>
-          <p style="margin: 0; font-size: 10px; font-weight: normal; line-height: 1.4; color: #0f172a;">${part.technicalReport || 'N/A'}</p>
-        </td>
-      </tr>
-    `;
-  }
-
-  // Prepare signature images for embedding
-  const attachments: { [key: string]: string } = {};
-
-  if (part.technicianSignature) {
-    attachments['tech_signature'] = part.technicianSignature;
-    addLog('Preparando firma de técnico para embedding...');
-  }
-
-  if (part.inspectorSignature) {
-    attachments['inspector_signature'] = part.inspectorSignature;
-    addLog('Preparando firma de inspector para embedding...');
-  }
-
-  const html_body = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 20px; background-color: #f1f5f9; font-family: Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 800px; margin: 0 auto; background-color: white;">
-        <tr>
-          <td style="border: 10px solid ${borderColor}; padding: 20px;">
-            
-            <!-- HEADER -->
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 2px solid black; margin-bottom: 8px; padding-bottom: 8px;">
-              <tr>
-                <td width="33%" style="vertical-align: middle;">
-                  <h1 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a; line-height: 1; font-family: Arial, sans-serif;">INVENTORY</h1>
-                  <h1 style="margin: 0; font-size: 18px; font-weight: 900; color: #0f172a; line-height: 1; font-family: Arial, sans-serif;">PART</h1>
-                  <p style="margin: 2px 0 0 0; font-size: 7px; font-weight: bold; text-transform: uppercase; color: #64748b; font-family: Arial, sans-serif; letter-spacing: 0.1em;">Aviation Technical Record</p>
-                </td>
-                <td width="67%" style="text-align: right; vertical-align: middle;">
-                  <div style="display: inline-block; border: 2px solid black; padding: 6px 16px; background-color: #f9fafb;">
-                    <h2 style="margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; color: #0f172a; font-family: Arial, sans-serif; letter-spacing: -0.02em;">${tagTitle}</h2>
-                  </div>
-                </td>
-              </tr>
-            </table>
-            
-            <!-- MAIN CONTENT TABLE -->
-            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
-              
-              <!-- 01. ADMINISTRATIVE RECORD -->
-              ${sectionHeader('01. ADMINISTRATIVE RECORD / DATOS DE REGISTRO')}
-              <tr>
-                ${field('ORGANIZATION / ORG', part.organization || 'World Class Aviation', 8, '33%')}
-                ${field('REG. DATE', part.registrationDate ? new Date(part.registrationDate).toLocaleDateString('en-US') : '', 4, '50%')}
-              </tr>
-              <tr>
-                ${field('PHONE / TEL', part.companyPhone || '', 6, '33%')}
-                ${field('EMAIL', part.companyEmail || '', 6, '25%')}
-              </tr>
-              
-              <!-- 02. TECHNICAL IDENTIFICATION -->
-              ${sectionHeader('02. TECHNICAL IDENTIFICATION / IDENTIFICACIÓN TÉCNICA')}
-              <tr>
-                ${field('PART NAME / NOMBRE', part.partName || '', 12, '25%')}
-              </tr>
-              <tr>
-                ${field('P/N (PART NUMBER)', part.pn || '', 12, '25%')}
-              </tr>
-              <tr>
-                ${field('S/N (SERIAL NUMBER)', part.sn || '', 12, '25%')}
-              </tr>
-              <tr>
-                ${field('BRAND / MARCA', part.brand || '', 12, '25%')}
-              </tr>
-              <tr>
-                ${field('MODEL / MODELO', part.model || '', 12, '25%')}
-              </tr>
-              
-              <!-- 03. TIMES AND CYCLES -->
-              ${sectionHeader('03. TIMES AND CYCLES / TIEMPOS Y CICLOS')}
-              <tr>
-                ${timesCycleBox('TAT / T.T', part.ttTat || '')}
-                ${timesCycleBox('TSO', part.tso || '')}
-                ${timesCycleBox('T. REM', part.trem || '')}
-                ${timesCycleBox('TOTAL / TC', part.tc || '')}
-                ${timesCycleBox('CSO', part.cso || '')}
-                ${timesCycleBox('C. REM', part.crem || '')}
-              </tr>
-              
-              <!-- 04. CONDITION & REMOVAL (DYNAMIC) -->
-              ${sectionHeader('04. CONDITION & REMOVAL / CONDICIÓN Y REMOCIÓN')}
-              ${section04Content}
-              
-              <!-- 05. TECH REPORTS & REMARKS -->
-              ${sectionHeader('05. TECH REPORTS & REMARKS / REPORTES Y OBSERVACIONES')}
-              ${section05TechReport}
-              <tr>
-                <td colspan="12" style="border: 1px solid black; padding: 6px; min-height: 35px; background-color: white; font-family: Arial, sans-serif;">
-                  <p style="margin: 0 0 4px 0; font-size: 7px; font-weight: bold; text-transform: uppercase; color: #94a3b8;">REMARKS / OBSERVACIONES:</p>
-                  <p style="margin: 0; font-size: 10px; font-weight: normal; line-height: 1.4; color: #0f172a;">${part.observations || 'N/A'}</p>
-                </td>
-              </tr>
-              
-              <!-- SIGNATURES SECTION -->
-              <tr>
-                <td colspan="12" style="padding-top: 16px;">
-                  <table width="100%" cellpadding="0" cellspacing="0" border="1" style="border-collapse: collapse; border: 1px solid black;">
-                    <tr>
-                      <!-- Technical Certification -->
-                      <td width="50%" style="border-right: 1px solid black; padding: 0;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td style="background-color: #f8fafc; border-bottom: 1px solid black; padding: 4px; text-align: center;">
-                              <span style="font-size: 9px; font-weight: 900; text-transform: uppercase; color: #64748b; font-family: Arial, sans-serif;">TECHNICAL CERTIFICATION / CERTIFICACIÓN TÉCNICA</span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style="padding: 12px; background-color: #fafafa; min-height: 80px;">
-                              <p style="margin: 0 0 4px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #94a3b8; font-family: Arial, sans-serif;">NAME / LIC:</p>
-                              <p style="margin: 0 0 8px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #0f172a; font-family: Arial, sans-serif;">${part.technicianName || ''}</p>
-                              <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; padding: 4px 8px; border-radius: 4px; text-align: center; display: inline-block;">
-                                <p style="margin: 0; font-size: 10px; font-weight: 900; color: #4338ca; text-transform: uppercase; font-family: Arial, sans-serif;">LIC: ${part.technicianLicense || ''}</p>
-                              </div>
-                              ${part.technicianSignature ? `
-                              <div style="margin-top: 8px; text-align: center;">
-                                <img src="cid:tech_signature" style="max-height: 60px; max-width: 100%; object-fit: contain;" alt="Technician Signature" />
-                              </div>
-                              ` : ''}
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                      
-                      <!-- Final Inspection -->
-                      <td width="50%" style="padding: 0;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td style="background-color: #f8fafc; border-bottom: 1px solid black; padding: 4px; text-align: center;">
-                              <span style="font-size: 9px; font-weight: 900; text-transform: uppercase; color: #64748b; font-family: Arial, sans-serif;">FINAL INSPECTION / INSPECCIÓN FINAL</span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style="padding: 12px; background-color: #fafafa; min-height: 80px;">
-                              <p style="margin: 0 0 4px 0; font-size: 8px; font-weight: bold; text-transform: uppercase; color: #94a3b8; font-family: Arial, sans-serif;">NAME / LIC:</p>
-                              <p style="margin: 0 0 8px 0; font-size: 11px; font-weight: 900; text-transform: uppercase; color: #0f172a; font-family: Arial, sans-serif;">${part.inspectorName || ''}</p>
-                              <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 4px 8px; border-radius: 4px; text-align: center; display: inline-block;">
-                                <p style="margin: 0; font-size: 10px; font-weight: 900; color: #047857; text-transform: uppercase; font-family: Arial, sans-serif;">LIC: ${part.inspectorLicense || ''}</p>
-                              </div>
-                              ${part.inspectorSignature ? `
-                              <div style="margin-top: 8px; text-align: center;">
-                                <img src="cid:inspector_signature" style="max-height: 60px; max-width: 100%; object-fit: contain;" alt="Inspector Signature" />
-                              </div>
-                              ` : ''}
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              
-              <!-- CERTIFICATION TEXT -->
-              <tr>
-                <td colspan="12" style="padding: 16px; margin-top: 16px; border: 1px solid black; text-align: center; background-color: #f9fafb;">
-                  <p style="margin: 0; font-size: 9px; font-weight: 900; text-transform: uppercase; line-height: 1.4; color: #0f172a; font-family: Arial, sans-serif; letter-spacing: -0.01em;">
-                    ${certificationText}
-                  </p>
-                </td>
-              </tr>
-              
-              <!-- FOOTER -->
-              <tr>
-                <td colspan="12" style="padding-top: 16px;">
-                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="font-size: 8px; font-weight: 900; text-transform: uppercase; color: #94a3b8; font-family: Arial, sans-serif; letter-spacing: 0.1em;">
-                        RECORD ID: ${part.id || ''}
-                      </td>
-                      <td style="text-align: center; font-size: 8px; font-weight: 900; text-transform: uppercase; color: #94a3b8; font-family: Arial, sans-serif; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-style: italic;">
-                        DIGITALLY GENERATED DOCUMENT - SECURE AVIATION CERTIFICATION LAYER
-                      </td>
-                      <td style="text-align: right; font-size: 8px; font-weight: 900; text-transform: uppercase; color: #94a3b8; font-family: Arial, sans-serif; letter-spacing: 0.1em;">
-                        DATE: ${new Date().toLocaleDateString()}
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-              
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+  addLog(`Solicitando envío de reporte (${reportType}) al backend...`);
 
   try {
-    const response = await fetch('/api/send-email', {
+    // We delegate EVERYTHING to the backend now.
+    // The backend knows how to generate the perfect PDF (Card or Traceability)
+    // and the matching HTML body.
+
+    // NORMALIZE DATA TO MATCH InventoryModule.tsx UNIVERSAL PAYLOAD
+    const standardizedItem = {
+      ...part, // Preserve original
+
+      // === IDENTITY ===
+      pn: part.pn,
+      sn: part.sn,
+
+      // === DESCRIPTION ===
+      desc: part.partName,
+      description: part.partName,
+      partName: part.partName,
+
+      // === LOCATION (All variants) ===
+      loc: part.location,
+      location: part.location,
+      physical_location: part.location,
+
+      // === CONDITION ===
+      cond: (part as any).condition || part.tagColor,
+      condition: (part as any).condition || part.tagColor,
+      status: (part as any).condition || part.tagColor,
+      tagColor: part.tagColor,
+
+      // === DATES ===
+      reg_date: part.registrationDate || new Date().toLocaleDateString(),
+      tag_date: part.registrationDate || new Date().toLocaleDateString(),
+
+      // === EXPIRATION ===
+      exp: part.shelfLife || 'N/A',
+      expiration_date: part.shelfLife || 'N/A',
+      shelf_life: part.shelfLife || 'N/A',
+
+      // === TRACEABILITY ===
+      trace: (part as any).traceability || (part as any).source || 'N/A',
+      source: (part as any).traceability || (part as any).source || 'N/A',
+
+      // === TECHNICAL DATA ===
+      tsn: (part as any).tsn || (part as any).time_since_new || '-',
+      csn: (part as any).csn || (part as any).cycles_since_new || '-',
+      tso: part.tso || (part as any).time_since_overhaul || '-',
+      cso: part.cso || (part as any).cycles_since_overhaul || '-',
+      tsr: (part as any).tsr || '-',
+      csr: (part as any).csr || '-',
+      trem: (part as any).trem || (part as any).time_remaining || '-',
+      crem: (part as any).crem || (part as any).cycles_remaining || '-',
+
+      // === OTHER ===
+      qty: (part as any).quantity || (part as any).qty || '1',
+      manuf: (part as any).manufacturer || part.brand || 'GENERIC',
+      brand: (part as any).manufacturer || part.brand || 'GENERIC',
+      model: (part as any).model || '-'
+    };
+
+    const response = await fetch('/api/reports/send-card-unified', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -510,20 +293,26 @@ export const sendEmailViaSmtp = async (recipient: string, part: AviationPart, ai
       },
       body: JSON.stringify({
         recipient,
-        subject: `Certificación Industrial Aeronáutica | P/N: ${part.pn} S/N: ${part.sn}`,
-        html_body,
-        attachments: Object.keys(attachments).length > 0 ? attachments : undefined
+        reportData: {
+          data: [standardizedItem],
+          reportType: reportType, // 'CARD'
+          reportId: `${reportType}-${part.pn}`
+        }
       })
     });
 
     if (response.ok) {
-      addLog("Certificación industrial enviada exitosamente.", "success");
+      addLog("Reporte enviado exitosamente con PDF adjunto.", "success");
       return true;
+    } else {
+      const errData = await response.json();
+      addLog(`Error servidor: ${errData.error || 'Desconocido'}`, 'error');
+      return false;
     }
-    addLog("Error crítico en servidor SMTP.", "error");
-    return false;
+
   } catch (e) {
-    addLog("Error de conexión API.", "error");
+    addLog("Error de red al contactar servidor de reportes.", "error");
+    console.error(e);
     return false;
   }
 };

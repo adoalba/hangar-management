@@ -9,7 +9,8 @@ const Sidebar = lazy(() => import('./components/Sidebar'));
 const HangarMenu = lazy(() => import('./components/HangarMenu'));
 
 // Core Views (Critical Path)
-import InventoryTable from './components/InventoryTable';
+// import InventoryTable from './components/InventoryTable';
+import InventoryModule from './components/InventoryModule';
 
 // Lazy Load Heavy Components for FCP optimization
 // Lazy Load Modals (Code Splitting)
@@ -27,7 +28,7 @@ const ScanPage = lazy(() => import('./components/ScanPage'));
 const LocationQRGenerator = lazy(() => import('./components/LocationQRGenerator'));
 const ReportsModule = lazy(() => import('./components/ReportsModule'));
 
-const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+])[A-Za-z\d!@#$%^&*()_+]{10,}$/;
+const PASS_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{10,}$/;
 
 interface Toast {
   id: number;
@@ -307,8 +308,8 @@ const App: React.FC = () => {
           <Suspense fallback={<LoadingSpinner />}>
             {view === 'HANGAR' && !selectedTag && !editingPart && <HangarMenu onSelectTag={(tag) => setSelectedTag(tag)} t={t} />}
             {(selectedTag || editingPart) && view === 'HANGAR' && <PartForm tag={selectedTag || editingPart!.tagColor} initialData={editingPart || undefined} onSubmit={(data) => { setPendingPartData(data); setShowLocationPopup(true); }} onCancel={() => { setSelectedTag(null); setEditingPart(null); setView('INVENTORY'); }} t={t} />}
-            {view === 'INVENTORY' && <InventoryTable inventory={inventory} setInventory={saveInventory} onEdit={(part) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
-            {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement t={t} token={token!} addToast={addToast} />}
+            {view === 'INVENTORY' && <InventoryModule inventory={inventory} onUpdate={saveInventory} onEdit={(part: any) => { setEditingPart(part); setView('HANGAR'); }} onPrint={triggerPrint} t={t} user={user} token={token!} addToast={addToast} />}
+            {view === 'USERS' && user.role === UserRole.ADMIN && <UserManagement currentUser={user} />}
             {view === 'SETTINGS' && user.role === UserRole.ADMIN && <Settings token={token!} addToast={addToast} />}
             {view === 'SCAN' && <ScanPage recordId={scanRecordId || undefined} user={user} token={token!} inventory={inventory} onUpdatePart={async (updatedPart) => { const success = await saveInventory(inventory.map(p => p.id === updatedPart.id ? updatedPart : p)); return success; }} onClose={() => { setScanRecordId(null); setView('INVENTORY'); window.location.hash = ''; }} t={t} />}
             {view === 'QR_LABELS' && user.role === UserRole.ADMIN && <LocationQRGenerator t={t} onClose={() => setView('INVENTORY')} />}

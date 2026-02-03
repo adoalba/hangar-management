@@ -25,25 +25,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # --- DEFINICIÓN DE MODELOS ---
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    username = Column(String, unique=True, index=True, nullable=False)
-    email = Column(String, nullable=False)
-    role = Column(String, nullable=False)
-    active = Column(Boolean, default=True)
-    password = Column(String, nullable=True) # Permitimos nulo si aún no se ha configurado
-    suspended = Column(Boolean, default=False)
-    must_change_password = Column(Boolean, default=True)
-    setup_token = Column(String, unique=True, index=True, nullable=True)
-    setup_token_expiry = Column(DateTime, nullable=True)
+from .auth.models import User
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
     token = Column(String, primary_key=True)
-    user_id = Column(String, index=True)
+    user_id = Column(Integer, index=True)
     expiry = Column(DateTime, nullable=False)
 
 class AviationPart(Base):

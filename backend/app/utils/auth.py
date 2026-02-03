@@ -28,12 +28,12 @@ def token_required(f):
     return decorated
 
 def generate_secure_password(length=14):
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()_+"
+    symbols = "@$!%*?&"
+    alphabet = string.ascii_letters + string.digits + symbols
     while True:
         password = ''.join(secrets.choice(alphabet) for i in range(length))
-        if (any(c.islower() for c in password)
-                and any(c.isupper() for c in password)
-                and sum(c.isdigit() for c in password) >= 2
-                and any(c in "!@#$%^&*()_+" for c in password)):
+        if (any(c.isupper() for c in password)
+                and any(c.isdigit() for c in password)
+                and any(c in symbols for c in password)):
             break
     return password

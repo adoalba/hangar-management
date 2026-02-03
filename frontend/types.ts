@@ -1,12 +1,12 @@
 
 export enum UserRole {
-  ADMIN = 'ADMIN',
-  TECHNICIAN = 'TECHNICIAN',
-  VIEWER = 'VIEWER'
+  ADMIN = 'admin',
+  TECHNICIAN = 'tech',
+  VIEWER = 'view'
 }
 
 export interface User {
-  id: string;
+  id: number;
   name: string;
   username: string;
   email: string;
@@ -36,7 +36,7 @@ export interface MovementEvent {
   description: string;
   previousLocation?: string;
   newLocation: string;
-  userId: string;
+  userId: string | number;
   userName: string;
 }
 

@@ -29,6 +29,11 @@ services:
       DATABASE_URL: sqlite:////app/data/inventory.db
       FLASK_ENV: production
       RESEND_API_KEY: ${RESEND_API_KEY}
+      # SMTP Configuration
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
     volumes:
       # Mapped for Persistence w/ SELinux :Z
       - ./backend/app:/app/app:Z

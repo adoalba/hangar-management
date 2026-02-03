@@ -15,7 +15,8 @@ python /app/scripts/init_db.py
 
 # Create default admin if not exists
 echo "[3/4] Checking admin user..."
-python /app/scripts/create_admin.py || echo "Admin may already exist, continuing..."
+# python /app/scripts/create_admin.py || echo "Admin may already exist, continuing..."
+echo "Skipping legacy admin creation (handled by main.py)"
 
 echo "[4/4] Starting Gunicorn server..."
 echo "================================================"
